@@ -1,0 +1,10 @@
+from enum import Enum
+
+
+class StavZasielky(Enum):
+    ODOSLANA = "ODOSLANA"
+    V_PREPRAVE = "V_PREPRAVE"
+    NEDORUCENA = "NEDORUCENA"
+    NEODOSLANA = "NEODOSLANA"
+    DORUCENA = "DORUCENA"
+    CHYBA_VYTVORENIA = "CHYBA_VYTVORENIA"

@@ -1,0 +1,2 @@
+class IPaymentService:
+    pass
