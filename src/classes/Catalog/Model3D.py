@@ -11,3 +11,15 @@ class Model3D:
         self.filePath = filePath
         self.volume = volume
         self.size = size
+
+    def getVolume(self) -> float:
+        return self.volume
+
+    def getSize(self) -> float:
+        return self.size
+
+    def updateFile(self, newFilePath: str):
+        self.filePath = newFilePath
+
+    def rename(self, newName: str):
+        self.name = newName
