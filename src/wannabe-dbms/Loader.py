@@ -6,7 +6,7 @@ from enum import Enum
 
 # Resolve the classes directory relative to this file.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_CLASSES_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "src", "classes"))
+_CLASSES_DIR = os.path.normpath(os.path.join(_THIS_DIR, "../..", "src", "classes"))
 
 
 # Registry: class_name -> (relative_file_path_inside_classes_dir, class_name_in_module)
