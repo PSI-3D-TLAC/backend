@@ -579,19 +579,12 @@ function setupOrderForm() {
       address[k] = v;
       if (!v) missing.push(k);
     }
-    const carrier = document.getElementById("orderCarrier")?.value || "";
+    const carrier = deliveryMethod;
     const deliveryType = document.getElementById("orderDeliveryType")?.value || "Standard";
     const addrErrEl = document.getElementById("addressError");
     if (addrErrEl) {
       addrErrEl.classList.add("hidden");
       addrErrEl.textContent = "";
-    }
-    if (!carrier) {
-      if (addrErrEl) {
-        addrErrEl.textContent = "Please choose a carrier.";
-        addrErrEl.classList.remove("hidden");
-      }
-      return;
     }
     if (missing.length) {
       if (addrErrEl) {

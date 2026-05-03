@@ -16,11 +16,14 @@ ORDER_STATUSES: List[str] = [
 
                                
 
+from ..Delivery.mock import CARRIERS as _CARRIERS
+
 DELIVERY_METHODS: Dict[str, dict] = {
-    "pickup":  {"label": "Personal pickup",  "price": 0.00, "estimatedDeliveryDays": 0},
-    "courier": {"label": "Courier (standard)", "price": 4.50, "estimatedDeliveryDays": 3},
-    "express": {"label": "Express courier",  "price": 9.90, "estimatedDeliveryDays": 1},
+    c["id"]: {"label": c["name"], "price": float(c["price"]), "estimatedDeliveryDays": int(c["estimatedDays"])}
+    for c in _CARRIERS
 }
+
+_DEFAULT_DELIVERY = next(iter(DELIVERY_METHODS))
 
                                                                       
 PAYMENT_TYPES: Dict[str, dict] = {
@@ -41,9 +44,9 @@ ORDERS: Dict[int, dict] = {
         "estimatedVolumeCm3": 120.0,
         "estimatedTimeMin": 90,
         "feasible": True,
-        "deliveryMethod": "courier",
-        "deliveryPrice": 4.50,
-        "estimatedDeliveryDays": 3,
+        "deliveryMethod": "GLS",
+        "deliveryPrice": 4.90,
+        "estimatedDeliveryDays": 2,
         "paymentType": "card",
         "paymentSurcharge": 0.00,
         "totalPrice": 34.30,
@@ -59,9 +62,9 @@ ORDERS: Dict[int, dict] = {
         "estimatedVolumeCm3": 80.0,
         "estimatedTimeMin": 75,
         "feasible": True,
-        "deliveryMethod": "pickup",
-        "deliveryPrice": 0.00,
-        "estimatedDeliveryDays": 0,
+        "deliveryMethod": "Slovenská pošta",
+        "deliveryPrice": 3.50,
+        "estimatedDeliveryDays": 4,
         "paymentType": "online",
         "paymentSurcharge": 0.00,
         "totalPrice": 18.50,
@@ -77,8 +80,8 @@ ORDERS: Dict[int, dict] = {
         "estimatedVolumeCm3": 200.0,
         "estimatedTimeMin": 180,
         "feasible": True,
-        "deliveryMethod": "express",
-        "deliveryPrice": 9.90,
+        "deliveryMethod": "DHL",
+        "deliveryPrice": 7.90,
         "estimatedDeliveryDays": 1,
         "paymentType": "cash_on_delivery",
         "paymentSurcharge": 1.50,
@@ -100,15 +103,27 @@ def _estimate(items: List[dict]) -> dict:
         "feasible": True,
     }
 
-def _resolve_delivery(method: Optional[str]) -> dict:
+EXPRESS_SURCHARGE_RATE = 0.25
+
+def _resolve_delivery(method: Optional[str], delivery_type: Optional[str] = None) -> dict:
     \
     if not method or method not in DELIVERY_METHODS:
-        method = "courier"
+        method = _DEFAULT_DELIVERY
     cfg = DELIVERY_METHODS[method]
+    price = float(cfg["price"])
+    days = int(cfg["estimatedDeliveryDays"])
+    dtype = (delivery_type or "Standard").strip() or "Standard"
+    if dtype.lower() == "express":
+        price = round(price * (1.0 + EXPRESS_SURCHARGE_RATE), 2)
+        days = max(1, days - 1) if days > 1 else 1
+        dtype = "Express"
+    else:
+        dtype = "Standard"
     return {
         "deliveryMethod": method,
-        "deliveryPrice": float(cfg["price"]),
-        "estimatedDeliveryDays": int(cfg["estimatedDeliveryDays"]),
+        "deliveryType": dtype,
+        "deliveryPrice": price,
+        "estimatedDeliveryDays": days,
     }
 
 def _resolve_payment(payment: Optional[str]) -> dict:
@@ -163,7 +178,10 @@ def create_order(data: dict) -> dict:
             "quantity": qty,
         }]
     estimate = _estimate(items)
-    delivery = _resolve_delivery(data.get("deliveryMethod"))
+    dtype = data.get("deliveryType")
+    if not dtype and isinstance(data.get("delivery"), dict):
+        dtype = data["delivery"].get("deliveryType")
+    delivery = _resolve_delivery(data.get("deliveryMethod"), dtype)
     payment = _resolve_payment(data.get("paymentType"))
     total = round(
         estimate["basePrice"] + delivery["deliveryPrice"] + payment["paymentSurcharge"],

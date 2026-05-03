@@ -154,6 +154,8 @@ def create_order():
         if isinstance(ship_check, dict) and "error" in ship_check:
             return jsonify(success=False, **ship_check), 400
         delivery_mock.SHIPMENTS.pop(ship_check["id"], None)
+        if not data.get("deliveryMethod"):
+            data["deliveryMethod"] = delivery.get("carrier")
     order = UC02_create_order.create(data)
     response = {"success": True, "order": order}
     if isinstance(delivery, dict):
