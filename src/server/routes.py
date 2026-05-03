@@ -12,12 +12,13 @@ from ..classes.SupplierIntegration import mock as supplier_mock
 from ..classes.Support import mock as support_mock
 from ..classes.UserManagment import mock as user_mock
 from ..use_cases import (
-    UC01_create_order,
-    UC02_select_material,
-    UC03_choose_delivery,
-    UC04_choose_payment,
-    UC05_track_order_status,
-    UC06_support_dashboard,
+    UC01_inventory_management,
+    UC02_create_order,
+    UC03_payment_processing,
+    UC05_customer_request,
+    UC06_delivery_processing,
+    UC07_order_processing,
+    UC09_complaint_handling,
 )
 
 def require_role(*allowed: str):
@@ -111,7 +112,7 @@ inventory_bp = Blueprint("inventory", __name__, url_prefix="/inventory")
 @inventory_bp.get("/materials")
 def list_materials():
     q = request.args.get("q")
-    return jsonify(materials=UC02_select_material.list_materials(q))
+    return jsonify(materials=UC01_inventory_management.list_materials(q))
 
 orders_bp = Blueprint("orders", __name__, url_prefix="/orders")
 
@@ -119,8 +120,8 @@ orders_bp = Blueprint("orders", __name__, url_prefix="/orders")
 def list_orders():
     customer = request.args.get("customerId", type=int)
     return jsonify(
-        orders=UC05_track_order_status.list_orders(customer_id=customer),
-        statuses=UC05_track_order_status.list_statuses(),
+        orders=UC07_order_processing.list_orders(customer_id=customer),
+        statuses=UC07_order_processing.list_statuses(),
     )
 
 @orders_bp.get("/options")
@@ -132,11 +133,11 @@ def order_options():
 def create_order():
     data = request.get_json(silent=True) or {}
     if data.get("deliveryMethod") is not None:
-        err = UC03_choose_delivery.validate(data.get("deliveryMethod"))
+        err = UC06_delivery_processing.validate(data.get("deliveryMethod"))
         if err:
             return jsonify(success=False, **err), 400
     if data.get("paymentType") is not None:
-        err = UC04_choose_payment.validate(data.get("paymentType"))
+        err = UC03_payment_processing.validate(data.get("paymentType"))
         if err:
             return jsonify(success=False, **err), 400
     delivery = data.get("delivery")
@@ -153,7 +154,7 @@ def create_order():
         if isinstance(ship_check, dict) and "error" in ship_check:
             return jsonify(success=False, **ship_check), 400
         delivery_mock.SHIPMENTS.pop(ship_check["id"], None)
-    order = UC01_create_order.create(data)
+    order = UC02_create_order.create(data)
     response = {"success": True, "order": order}
     if isinstance(delivery, dict):
         shipment = delivery_mock.create_shipment({
@@ -167,7 +168,7 @@ def create_order():
 
 @orders_bp.get("/<int:oid>")
 def get_order(oid: int):
-    order = UC05_track_order_status.get_order(oid)
+    order = UC07_order_processing.get_order(oid)
     if order is None:
         return jsonify(success=False, error="not_found"), 404
     return jsonify(success=True, order=order)
@@ -176,7 +177,7 @@ def get_order(oid: int):
 @require_role("Support", "Manager", "Admin")
 def update_order_status(oid: int):
     data = request.get_json(silent=True) or {}
-    result = UC05_track_order_status.update_status(oid, data.get("status", ""))
+    result = UC07_order_processing.update_status(oid, data.get("status", ""))
     if result is None:
         return jsonify(success=False, error="not_found"), 404
     if "error" in result:
@@ -235,10 +236,10 @@ def _can_view(record: dict, user: dict) -> bool:
 @support_bp.get("/requests")
 def list_requests():
     user = _current_user()
-    items = UC06_support_dashboard.list_requests(user.get("role"), user.get("id"))
+    items = UC05_customer_request.list_requests(user.get("role"), user.get("id"))
     if items is None:
         return jsonify(success=False, error="forbidden"), 403
-    return jsonify(requests=items, statuses=UC06_support_dashboard.request_statuses())
+    return jsonify(requests=items, statuses=UC05_customer_request.request_statuses())
 
 @support_bp.post("/requests")
 @require_role("Customer")
@@ -248,7 +249,7 @@ def create_request():
 
 @support_bp.get("/requests/<int:rid>")
 def get_request_detail(rid: int):
-    record = UC06_support_dashboard.get_request(rid)
+    record = UC05_customer_request.get_request(rid)
     if record is None:
         return jsonify(success=False, error="not_found"), 404
     if not _can_view(record, _current_user()):
@@ -259,7 +260,7 @@ def get_request_detail(rid: int):
 @require_role("Support", "Admin")
 def patch_request_status(rid: int):
     data = request.get_json(silent=True) or {}
-    result = UC06_support_dashboard.update_request_status(
+    result = UC05_customer_request.update_request_status(
         rid,
         data.get("status", ""),
         comment=data.get("comment", "") or data.get("response", ""),
@@ -279,13 +280,13 @@ def update_request_status(rid: int):
 @support_bp.get("/complaints")
 def list_complaints():
     user = _current_user()
-    items = UC06_support_dashboard.list_complaints(user.get("role"), user.get("id"))
+    items = UC09_complaint_handling.list_complaints(user.get("role"), user.get("id"))
     if items is None:
         return jsonify(success=False, error="forbidden"), 403
     return jsonify(
         complaints=items,
         reasons=support_mock.COMPLAINT_REASONS,
-        statuses=UC06_support_dashboard.complaint_statuses(),
+        statuses=UC09_complaint_handling.complaint_statuses(),
     )
 
 @support_bp.post("/complaints")
@@ -298,7 +299,7 @@ def create_complaint():
 
 @support_bp.get("/complaints/<int:cid>")
 def get_complaint_detail(cid: int):
-    record = UC06_support_dashboard.get_complaint(cid)
+    record = UC09_complaint_handling.get_complaint(cid)
     if record is None:
         return jsonify(success=False, error="not_found"), 404
     if not _can_view(record, _current_user()):
@@ -309,7 +310,7 @@ def get_complaint_detail(cid: int):
 @require_role("Support", "Admin")
 def patch_complaint_status(cid: int):
     data = request.get_json(silent=True) or {}
-    result = UC06_support_dashboard.update_complaint_status(
+    result = UC09_complaint_handling.update_complaint_status(
         cid,
         data.get("status", ""),
         comment=data.get("comment", "") or data.get("response", ""),

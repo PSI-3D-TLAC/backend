@@ -24,31 +24,13 @@ def update_request_status(request_id: int, status: str, comment: str, user: dict
 def request_statuses() -> list:
     return list(support_mock.REQUEST_STATUSES)
 
-def list_complaints(role: str, user_id: Optional[str]):
-    role = (role or "").lower()
-    if role in ("support", "admin"):
-        return support_mock.list_complaints()
-    if role == "customer":
-        return support_mock.list_complaints(customer_id=user_id)
-    return None
-
-def get_complaint(complaint_id: int) -> Optional[dict]:
-    return support_mock.get_complaint(complaint_id)
-
-def update_complaint_status(complaint_id: int, status: str, comment: str, user: dict):
-    return support_mock.update_complaint_status(
-        complaint_id, status, comment=comment, user=user,
-    )
-
-def complaint_statuses() -> list:
-    return list(support_mock.COMPLAINT_STATUSES)
-
 def dashboard(role: str, user_id: Optional[str]) -> dict:
+    from . import UC09_complaint_handling
     payload = {
         "requests": list_requests(role, user_id) or [],
-        "complaints": list_complaints(role, user_id) or [],
+        "complaints": UC09_complaint_handling.list_complaints(role, user_id) or [],
         "requestStatuses": request_statuses(),
-        "complaintStatuses": complaint_statuses(),
+        "complaintStatuses": UC09_complaint_handling.complaint_statuses(),
     }
     if (role or "").lower() in ("support", "admin"):
         payload["orders"] = order_mock.list_orders()
