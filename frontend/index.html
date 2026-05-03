@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrintHub — 3D Printing Service</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ============================ HEADER ============================ -->
+  <header class="site-header">
+    <div class="top-bar">
+      <button class="hamburger" id="hamburgerBtn" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
+
+      <a href="#home" class="logo">Print<span>Hub</span></a>
+
+      <div class="search-wrapper">
+        <input
+          type="text"
+          id="searchInput"
+          class="search-input"
+          placeholder="Search 3D models, materials, orders..."
+        />
+        <button class="search-btn" id="searchBtn">Search</button>
+      </div>
+
+      <a href="#order" class="cta-btn">Create Print Order</a>
+
+      <div class="icon-buttons">
+        <button class="icon-btn" title="Notifications" aria-label="Notifications">🔔</button>
+        <button class="icon-btn" title="Cart" aria-label="Cart">🛒</button>
+        <button class="icon-btn" title="Profile" aria-label="Profile">👤</button>
+      </div>
+
+      <div class="user-box" id="userBox">
+        <span id="userInfo" class="hidden">
+          <span id="userName">—</span>
+          <span class="user-role" id="userRole">—</span>
+          <button id="logoutBtn" class="btn-ghost small">Log out</button>
+        </span>
+      </div>
+    </div>
+
+    <nav class="sub-nav" id="subNav">
+      <a href="#home">Home</a>
+      <a href="#catalog">Catalog</a>
+      <a href="#order">Order</a>
+      <a href="#inventory">Inventory</a>
+      <a href="#support">Support</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </header>
+
+  <!-- ============================ HERO ============================ -->
+  <main>
+    <section id="home" class="hero role-section" data-role="Customer">
+      <div class="hero-content">
+        <h1>Bring your ideas to <span class="accent">life in 3D</span></h1>
+        <p>
+          PrintHub is your one-stop online 3D printing service. Upload a model,
+          pick a material, and we'll print and ship it straight to your door.
+        </p>
+        <div class="hero-actions">
+          <a href="#order" class="btn-primary">Create Print Order</a>
+          <a href="#catalog" class="btn-ghost">Browse Catalog</a>
+        </div>
+
+        <div class="categories">
+          <button class="cat-btn" data-cat="materials">🧵 Materials</button>
+          <button class="cat-btn" data-cat="models">🗿 Models</button>
+          <button class="cat-btn" data-cat="orders">📦 Orders</button>
+          <button class="cat-btn" data-cat="support">💬 Support</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ CATALOG ============================ -->
+    <section id="catalog" class="section role-section" data-role="Customer Admin Manager">
+      <div class="section-head">
+        <h2>Catalog</h2>
+        <p class="muted">Ready-made 3D models you can order in one click.</p>
+      </div>
+
+      <div class="card-grid" id="catalogGrid">
+        <!-- Cards rendered by JS -->
+      </div>
+      <p id="catalogEmpty" class="muted hidden">No products match your search.</p>
+    </section>
+
+    <!-- ============================ ORDER FORM (Customer) ============================ -->
+    <section id="order" class="section role-section" data-role="Customer">
+      <div class="section-head">
+        <h2>Create Print Order</h2>
+        <p class="muted">Pick a model, configure print settings, and submit.</p>
+      </div>
+
+      <form id="orderForm" class="order-form card">
+        <div class="form-row">
+          <label>
+            Model
+            <select id="orderModel" required>
+              <option value="">— choose —</option>
+            </select>
+          </label>
+
+          <label>
+            Material / Filament
+            <select id="orderMaterial" required>
+              <option value="">— choose —</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            Print quality
+            <select id="orderQuality" required>
+              <option value="low">Low (fast, draft)</option>
+              <option value="medium" selected>Medium (standard)</option>
+              <option value="high">High (fine detail)</option>
+            </select>
+          </label>
+
+          <label>
+            Quantity
+            <input type="number" id="orderQty" min="1" max="100" step="1" value="1" required />
+          </label>
+        </div>
+
+        <p id="orderQtyError" class="form-error hidden" style="color:#ffb4b4;margin:0;"></p>
+        <p id="orderFormBackendMsg" class="hidden" style="color:#ffb4b4;border:1px dashed #ff5252;border-radius:8px;padding:10px;margin:0;text-align:center;"></p>
+
+        <div class="form-row">
+          <label class="upload-label">
+            Upload your own 3D model (.stl, .obj)
+            <input type="file" id="orderFile" accept=".stl,.obj,.3mf" />
+          </label>
+        </div>
+
+        <div class="estimate">
+          <div>
+            <span class="muted">Estimated price</span>
+            <strong id="estPrice">€0.00</strong>
+          </div>
+          <div>
+            <span class="muted">Estimated print time</span>
+            <strong id="estTime">0h 0m</strong>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="recalcBtn" class="btn-ghost">Recalculate</button>
+          <button type="submit" class="btn-primary">Submit Order</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============================ ADMIN: CATALOG MANAGEMENT ============================ -->
+    <section id="adminCatalog" class="section role-section" data-role="Admin">
+      <div class="section-head">
+        <h2>Catalog Management</h2>
+        <p class="muted">Add, edit and remove products in the store.</p>
+      </div>
+
+      <form id="adminProductForm" class="support-form card">
+        <input type="hidden" id="adminProductId" value="" />
+        <div class="form-row">
+          <label>Name
+            <input type="text" id="adminProductName" required />
+          </label>
+          <label>Price (€)
+            <input type="number" id="adminProductPrice" min="0" step="0.01" required />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Material
+            <input type="text" id="adminProductMaterial" placeholder="PLA" />
+          </label>
+          <label>Category
+            <input type="text" id="adminProductCategory" placeholder="Office" />
+          </label>
+          <label>Availability
+            <select id="adminProductAvailability">
+              <option value="Available">Available</option>
+              <option value="Low Stock">Low Stock</option>
+              <option value="Expected">Expected</option>
+            </select>
+          </label>
+        </div>
+        <label>Description
+          <textarea id="adminProductDescription" rows="2"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="adminSaveBtn">Add Product</button>
+          <button type="button" class="btn-ghost" id="adminCancelBtn">Cancel</button>
+        </div>
+        <p id="adminProductStatus" class="muted"></p>
+      </form>
+    </section>
+
+    <!-- ============================ INVENTORY (Manager) ============================ -->
+    <section id="inventory" class="section role-section" data-role="Manager">
+      <div class="section-head">
+        <h2>Inventory</h2>
+        <p class="muted">Available filaments and materials in our warehouse.</p>
+      </div>
+
+      <ul class="inventory-list" id="inventoryList">
+        <!-- Items rendered by JS -->
+      </ul>
+    </section>
+
+    <!-- ============================ SUPPORT REQUEST (Customer) ============================ -->
+    <section id="support" class="section role-section" data-role="Customer" data-customer-only="true">
+      <div class="section-head">
+        <h2>Customer Support</h2>
+        <p class="muted">Need help with an order? Send us a request.</p>
+      </div>
+
+      <form id="supportForm" class="support-form card">
+        <div class="form-row">
+          <label>
+            Order ID
+            <input type="text" id="supOrderId" placeholder="e.g. 1042" required />
+          </label>
+
+          <label>
+            Request type
+            <select id="supType" required>
+              <option value="change">Change order</option>
+              <option value="cancel">Cancel order</option>
+              <option value="complaint">Complaint</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Message
+          <textarea id="supMessage" rows="4" placeholder="Describe the issue..." required></textarea>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Send Request</button>
+        </div>
+        <p id="supportStatus" class="muted"></p>
+      </form>
+    </section>
+
+    <!-- ============================ MY ORDERS (Customer) ============================ -->
+    <section id="myOrders" class="section role-section" data-role="Customer">
+      <div class="section-head">
+        <h2>My Orders</h2>
+        <p class="muted">Your recent orders.</p>
+      </div>
+      <ul class="inventory-list" id="myOrdersList"></ul>
+    </section>
+
+    <!-- ============================ COMPLAINT (Customer) ============================ -->
+    <section id="complaint" class="section role-section" data-role="Customer">
+      <div class="section-head">
+        <h2>File a Complaint</h2>
+        <p class="muted">For delivered orders only.</p>
+      </div>
+      <form id="complaintForm" class="support-form card">
+        <div class="form-row">
+          <label>Order ID
+            <input type="number" id="complaintOrderId" min="1" required />
+          </label>
+          <label>Reason
+            <select id="complaintReason" required>
+              <option value="damaged">Damaged order</option>
+              <option value="missing_parts">Missing parts</option>
+              <option value="full_return">Full return</option>
+            </select>
+          </label>
+        </div>
+        <label>Description
+          <textarea id="complaintDescription" rows="3" required></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Submit Complaint</button>
+        </div>
+        <p id="complaintStatus" class="muted"></p>
+      </form>
+    </section>
+
+    <!-- ============================ SUPPORT STAFF VIEW ============================ -->
+    <section id="supportStaff" class="section role-section" data-role="Support">
+      <div class="section-head">
+        <h2>Support Dashboard</h2>
+        <p class="muted">View customer requests and complaints.</p>
+      </div>
+      <h3>Requests</h3>
+      <ul class="inventory-list" id="supportReqList"></ul>
+      <h3>Complaints</h3>
+      <ul class="inventory-list" id="supportCmpList"></ul>
+      <h3>Orders</h3>
+      <ul class="inventory-list" id="supportOrdersList"></ul>
+    </section>
+
+    <!-- ============================ MANAGER VIEW ============================ -->
+    <section id="managerSuppliers" class="section role-section" data-role="Manager">
+      <div class="section-head">
+        <h2>Suppliers</h2>
+        <p class="muted">Register suppliers and import their products.</p>
+      </div>
+      <form id="supplierForm" class="support-form card">
+        <div class="form-row">
+          <label>Name
+            <input type="text" id="supplierName" required />
+          </label>
+          <label>Address
+            <input type="text" id="supplierAddress" />
+          </label>
+          <label>Contact
+            <input type="text" id="supplierContact" />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Register Supplier</button>
+        </div>
+        <p id="supplierStatus" class="muted"></p>
+      </form>
+
+      <form id="importForm" class="support-form card">
+        <div class="form-row">
+          <label>Supplier ID
+            <input type="number" id="importSupplierId" min="1" required />
+          </label>
+          <label>Catalog link
+            <input type="text" id="importLink" placeholder="https://..." required />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Import Products</button>
+        </div>
+        <p id="importStatus" class="muted"></p>
+      </form>
+
+      <h3>Existing suppliers</h3>
+      <ul class="inventory-list" id="suppliersList"></ul>
+    </section>
+
+    <section id="managerOrders" class="section role-section" data-role="Manager">
+      <div class="section-head">
+        <h2>Orders Overview</h2>
+        <p class="muted">All orders in the system.</p>
+      </div>
+      <ul class="inventory-list" id="managerOrdersList"></ul>
+    </section>
+  </main>
+
+  <!-- ============================ LOGIN SCREEN ============================ -->
+  <div id="loginScreen" class="login-screen" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <div class="login-brand">
+      <h1 class="logo">Print<span>Hub</span></h1>
+      <p class="muted">3D Printing Service</p>
+    </div>
+    <div class="login-card card">
+      <h3 id="loginTitle">Log in</h3>
+      <form id="loginForm">
+        <label>Email
+          <input type="email" id="loginEmail" required value="customer@test.com" />
+        </label>
+        <label>Password
+          <input type="password" id="loginPassword" required value="1234" />
+        </label>
+        <p id="loginError" class="form-error hidden" style="color:#ffb4b4;margin:0;"></p>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" style="width:100%;">Log in</button>
+        </div>
+        <div class="login-hint muted">
+          <strong>Sample logins (password <code>1234</code>):</strong>
+          <ul>
+            <li>customer@test.com</li>
+            <li>support@test.com</li>
+            <li>manager@test.com</li>
+          </ul>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================ FOOTER ============================ -->
+  <footer id="contact" class="site-footer">
+    <div class="footer-cols">
+      <div>
+        <h3 class="logo small">Print<span>Hub</span></h3>
+        <p class="muted">Online 3D printing made simple.</p>
+      </div>
+      <div>
+        <h4>Navigate</h4>
+        <ul>
+          <li><a href="#home">Home</a></li>
+          <li><a href="#catalog">Catalog</a></li>
+          <li><a href="#order">Order</a></li>
+          <li><a href="#inventory">Inventory</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#about">About</a></li>
+          <li><a href="#support">Support</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Contact</h4>
+        <p class="muted">hello@printhub.test</p>
+        <p class="muted">+421 900 000 000</p>
+      </div>
+    </div>
+    <div class="footer-bottom muted">
+      © 2025 PrintHub — School project. All rights reserved.
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
