@@ -195,7 +195,11 @@ function renderCatalog(filter = "") {
 
   grid.innerHTML = list.map(p => `
     <article class="product-card" data-id="${p.id}">
-      <div class="product-thumb">🧊</div>
+      <div class="product-thumb">
+        ${p.image
+          ? `<img src="${p.image}" alt="${p.name ?? "Product preview"}" loading="lazy">`
+          : `<span class="product-thumb-placeholder">🧊</span>`}
+      </div>
       <h3>${p.name ?? "Unnamed"}</h3>
       <p class="muted" style="margin:4px 0;font-size:0.85rem;">${p.description ?? ""}</p>
       <div class="product-meta">
@@ -527,12 +531,13 @@ function renderOrderConfirmation(order, shipment) {
   const days = order.estimatedDeliveryDays;
   const etaTxt = formatDeliveryWindow(days);
   const deliveryType = escapeHtml(order.deliveryType ?? shipment?.deliveryType ?? "Standard");
+  const pendingShipmentText = "Will be created when the order reaches Pripravená na odoslanie.";
   const trackingNumber = shipment?.trackingNumber
     ? escapeHtml(shipment.trackingNumber)
-    : "—";
+    : pendingShipmentText;
   const trackingLink = shipment?.trackingUrl
     ? renderTrackingLink(shipment.trackingUrl, shipment.trackingNumber || "Track shipment")
-    : "—";
+    : pendingShipmentText;
   el.innerHTML = `
     <div style="font-size:1.05rem;margin-bottom:6px;">✅ <strong>Order #${order.id}</strong> created — status: <strong>${order.status || "Created"}</strong></div>
     <ul style="list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 18px;">
@@ -707,8 +712,10 @@ function setupOrderForm() {
           "<p><strong>Address:</strong> " + [a.fullName, a.street, a.city, a.postalCode, a.country, a.phone].filter(Boolean).join(", ") + "</p>";
         shipEl.classList.remove("hidden");
       } else {
-        shipEl.classList.add("hidden");
-        shipEl.innerHTML = "";
+        shipEl.classList.remove("hidden");
+        shipEl.innerHTML =
+          "<h3>Shipment</h3>" +
+          "<p>Shipment will be created automatically when the order reaches <strong>Pripravená na odoslanie</strong>.</p>";
       }
     }
     loadOrders();
@@ -1510,7 +1517,6 @@ async function loadAllAppData() {
     loadProducts(),
     loadMaterials(),
     loadOrders(),
-    loadDeliveryOptions(),
     loadOrderOptions(),
     loadUsers(),
   ]);
@@ -1618,101 +1624,6 @@ async function loadOrders() {
   }
 }
 
-let SHIPMENT_CARRIERS = [];
-
-async function loadDeliveryOptions() {
-  try {
-    const data = await apiGet("/delivery/options");
-    SHIPMENT_CARRIERS = Array.isArray(data.carriers) ? data.carriers : [];
-    populateShipmentCarrierSelect();
-    return true;
-  } catch (err) {
-    console.error("Failed to load /delivery/options:", err);
-    SHIPMENT_CARRIERS = [];
-    return false;
-  }
-}
-
-function populateShipmentCarrierSelect() {
-  const sel = document.getElementById("shipCarrier");
-  if (!sel) return;
-  sel.innerHTML = "";
-  SHIPMENT_CARRIERS.forEach(c => {
-    const opt = document.createElement("option");
-    opt.value = c.id;
-    const days = c.estimatedDays === 0 ? "same day"
-      : `${c.estimatedDays} day${c.estimatedDays === 1 ? "" : "s"}`;
-    opt.textContent = `${c.name} — ${formatPrice(c.price)} · ${days}`;
-    sel.appendChild(opt);
-  });
-}
-
-function setShipmentStatus(msg, isError) {
-  const el = document.getElementById("shipmentStatus");
-  if (!el) return;
-  el.textContent = msg || "";
-  el.style.color = isError ? "#ffb4b4" : "";
-}
-
-function setupShipmentForm() {
-  const form = document.getElementById("shipmentForm");
-  if (!form) return;
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    setShipmentStatus("");
-    const result = document.getElementById("shipmentResult");
-    if (result) { result.classList.add("hidden"); result.innerHTML = ""; }
-
-    const address = {
-      fullName: document.getElementById("shipFullName").value.trim(),
-      street: document.getElementById("shipStreet").value.trim(),
-      city: document.getElementById("shipCity").value.trim(),
-      postalCode: document.getElementById("shipPostalCode").value.trim(),
-      country: document.getElementById("shipCountry").value.trim(),
-      phone: document.getElementById("shipPhone").value.trim(),
-    };
-    const missing = Object.entries(address).filter(([, v]) => !v).map(([k]) => k);
-    if (missing.length) {
-      setShipmentStatus(`Please fill in all address fields: ${missing.join(", ")}`, true);
-      return;
-    }
-    const carrier = document.getElementById("shipCarrier").value;
-    if (!carrier) { setShipmentStatus("Please choose a carrier.", true); return; }
-    const orderIdRaw = document.getElementById("shipOrderId").value;
-    const orderId = orderIdRaw ? Number(orderIdRaw) : null;
-    if (!orderId) { setShipmentStatus("Please enter the Order ID.", true); return; }
-
-    const payload = {
-      orderId,
-      carrier,
-      deliveryType: document.getElementById("shipDeliveryType").value || "Standard",
-      address,
-    };
-    const { res, data } = await apiSend("POST", "/delivery/shipments", payload);
-    if (!res.ok || !data || data.success === false) {
-      const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
-      setShipmentStatus(`Shipment failed: ${msg}`, true);
-      return;
-    }
-    const s = data.shipment || {};
-    setShipmentStatus("Shipment created.", false);
-    if (result) {
-      result.classList.remove("hidden");
-      result.innerHTML = `
-        <h4 style="margin:0 0 8px 0;">Shipment created</h4>
-        <ul style="list-style:none;padding:0;margin:0;">
-          <li><strong>Shipment ID:</strong> ${escapeHtml(String(s.id ?? "—"))}</li>
-          <li><strong>Carrier:</strong> ${escapeHtml(s.carrier ?? "—")}</li>
-          <li><strong>Delivery type:</strong> ${escapeHtml(s.deliveryType ?? "—")}</li>
-          <li><strong>Delivery price:</strong> ${formatPrice(s.price ?? 0)}</li>
-          <li><strong>Tracking number:</strong> ${escapeHtml(s.trackingNumber ?? "—")}</li>
-          <li><strong>Tracking link:</strong> ${renderTrackingLink(s.trackingUrl, s.trackingNumber || "Track shipment")}</li>
-          <li><strong>Status:</strong> ${escapeHtml(s.status ?? "—")}</li>
-        </ul>`;
-    }
-  });
-}
-
 async function loadUsers() {
   try {
     const data = await apiGet("/users");
@@ -1735,7 +1646,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupImportForm();
   setupSupportDetail();
   setupAdminProductForm();
-  setupShipmentForm();
   setupLoginUI();
   setupCategoryButtons();
   setupNavLinks();

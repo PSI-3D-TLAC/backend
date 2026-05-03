@@ -7,10 +7,10 @@ from typing import Dict, List, Optional
 _ids = count(start=5)
 
 PRODUCTS: Dict[int, dict] = {
-    1: {"id": 1, "name": "Phone Stand",  "description": "Adjustable phone holder",      "price":  9.50, "material": "PLA",  "availability": "Available", "category": "Office", "isActive": True,  "image": "/img/stand.png",  "modelRef": "stand.stl"},
-    2: {"id": 2, "name": "Gear Model",   "description": "Mechanical gear demo model",   "price": 12.00, "material": "PETG", "availability": "Available", "category": "Tech",   "isActive": True,  "image": "/img/gear.png",   "modelRef": "gear.stl"},
-    3: {"id": 3, "name": "Mini Figure",  "description": "Collectible mini figurine",    "price":  7.50, "material": "PLA",  "availability": "Low Stock", "category": "Toys",   "isActive": True,  "image": "/img/mini.png",   "modelRef": "mini.stl"},
-    4: {"id": 4, "name": "Vase Classic", "description": "Decorative spiral vase",       "price": 14.90, "material": "PLA",  "availability": "Available", "category": "Home",   "isActive": True,  "image": "/img/vase.png",   "modelRef": "vase.stl"},
+    1: {"id": 1, "name": "Phone Stand",  "description": "Adjustable phone holder",      "price":  9.50, "material": "PLA",  "availability": "Available", "category": "Office", "isActive": True,  "image": "assets/catalog-phone-stand.png",  "modelRef": "stand.stl"},
+    2: {"id": 2, "name": "Gear Model",   "description": "Mechanical gear demo model",   "price": 12.00, "material": "PETG", "availability": "Available", "category": "Tech",   "isActive": True,  "image": "assets/catalog-gear-model.png",   "modelRef": "gear.stl"},
+    3: {"id": 3, "name": "Mini Figure",  "description": "Collectible mini figurine",    "price":  7.50, "material": "PLA",  "availability": "Low Stock", "category": "Toys",   "isActive": True,  "image": "assets/catalog-mini-figure.png",   "modelRef": "mini.stl"},
+    4: {"id": 4, "name": "Vase Classic", "description": "Decorative spiral vase",       "price": 14.90, "material": "PLA",  "availability": "Available", "category": "Home",   "isActive": True,  "image": "assets/catalog-vase-classic.png",   "modelRef": "vase.stl"},
 }
 
 def list_products(active_only: bool = False) -> List[dict]:
