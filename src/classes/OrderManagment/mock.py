@@ -1,38 +1,33 @@
-"""Minimal mock orders: in-memory dict + simple status transitions.
-
-Adds simple delivery method and payment type configuration that affect the
-final order price and estimated delivery time.
-"""
+\
+\
+\
+\
+\
 from __future__ import annotations
 
 from datetime import datetime
 from itertools import count
 from typing import Dict, List, Optional
 
-
-# Simplified, user-facing order lifecycle (issue requirement).
+                                                              
 ORDER_STATUSES: List[str] = [
     "Created", "Paid", "Printing", "Shipped", "Delivered", "Cancelled",
 ]
 
-# ---------------------------------------------------------------- delivery
-# Each delivery method affects:
-#   - price (added to the order total)
-#   - estimatedDeliveryDays (added to the customer-visible ETA)
+                               
+
 DELIVERY_METHODS: Dict[str, dict] = {
     "pickup":  {"label": "Personal pickup",  "price": 0.00, "estimatedDeliveryDays": 0},
     "courier": {"label": "Courier (standard)", "price": 4.50, "estimatedDeliveryDays": 3},
     "express": {"label": "Express courier",  "price": 9.90, "estimatedDeliveryDays": 1},
 }
 
-# ---------------------------------------------------------------- payment
-# Each payment type may add a small surcharge (e.g. cash on delivery).
+                                                                      
 PAYMENT_TYPES: Dict[str, dict] = {
     "card":             {"label": "Card",             "surcharge": 0.00},
     "online":           {"label": "Online payment",   "surcharge": 0.00},
     "cash_on_delivery": {"label": "Cash on delivery", "surcharge": 1.50},
 }
-
 
 _ids = count(start=4)
 
@@ -93,7 +88,6 @@ ORDERS: Dict[int, dict] = {
     },
 }
 
-
 def _estimate(items: List[dict]) -> dict:
     qty = sum(int(it.get("quantity", 1)) for it in items)
     volume = 60.0 * qty
@@ -106,9 +100,8 @@ def _estimate(items: List[dict]) -> dict:
         "feasible": True,
     }
 
-
 def _resolve_delivery(method: Optional[str]) -> dict:
-    """Return the delivery config; falls back to ``courier`` if invalid/missing."""
+    \
     if not method or method not in DELIVERY_METHODS:
         method = "courier"
     cfg = DELIVERY_METHODS[method]
@@ -118,9 +111,8 @@ def _resolve_delivery(method: Optional[str]) -> dict:
         "estimatedDeliveryDays": int(cfg["estimatedDeliveryDays"]),
     }
 
-
 def _resolve_payment(payment: Optional[str]) -> dict:
-    """Return the payment config; falls back to ``card`` if invalid/missing."""
+    \
     if not payment or payment not in PAYMENT_TYPES:
         payment = "card"
     cfg = PAYMENT_TYPES[payment]
@@ -129,9 +121,8 @@ def _resolve_payment(payment: Optional[str]) -> dict:
         "paymentSurcharge": float(cfg["surcharge"]),
     }
 
-
 def list_options() -> dict:
-    """Expose delivery methods and payment types for the frontend."""
+    \
     return {
         "deliveryMethods": [
             {"id": k, "label": v["label"], "price": v["price"], "estimatedDeliveryDays": v["estimatedDeliveryDays"]}
@@ -144,23 +135,19 @@ def list_options() -> dict:
         "statuses": ORDER_STATUSES,
     }
 
-
 def list_orders(customer_id: Optional[int] = None) -> List[dict]:
     items = list(ORDERS.values())
     if customer_id is not None:
         items = [o for o in items if o["customerId"] == customer_id]
     return items
 
-
 def get_order(order_id: int) -> Optional[dict]:
     return ORDERS.get(order_id)
-
 
 def create_order(data: dict) -> dict:
     oid = next(_ids)
     items = data.get("items") or []
-    # Frontend may send a flat single-item body
-    # ({productId, materialId, printQuality, quantity, customModelFileName}).
+
     if not items and ("productId" in data or "customModelFileName" in data):
         try:
             qty = int(data.get("quantity", 1))
@@ -197,7 +184,6 @@ def create_order(data: dict) -> dict:
     }
     ORDERS[oid] = order
     return order
-
 
 def update_status(order_id: int, status: str) -> Optional[dict]:
     order = ORDERS.get(order_id)

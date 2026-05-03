@@ -21,14 +21,11 @@ SHIPMENT_STATUSES: List[str] = ["NotSent", "Sent", "InTransit", "Delivered", "No
 SHIPMENTS: Dict[int, dict] = {}
 _ids = count(start=1)
 
-
 def list_options() -> dict:
     return {"carriers": CARRIERS}
 
-
 def _carrier(carrier_id: str) -> Optional[dict]:
     return next((c for c in CARRIERS if c["id"] == carrier_id), None)
-
 
 def _validate_address(address) -> Optional[dict]:
     if not isinstance(address, dict):
@@ -41,7 +38,6 @@ def _validate_address(address) -> Optional[dict]:
                 "message": f"Missing address fields: {', '.join(missing)}",
                 "missing": missing}
     return None
-
 
 def create_shipment(data: dict):
     carrier_id = (data.get("carrier") or "").strip()
@@ -71,7 +67,6 @@ def create_shipment(data: dict):
     }
     SHIPMENTS[sid] = shipment
     return shipment
-
 
 def update_shipment_status(shipment_id: int, status: str) -> Optional[dict]:
     shipment = SHIPMENTS.get(shipment_id)

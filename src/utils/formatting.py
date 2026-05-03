@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-
 def now_iso() -> str:
     return datetime.utcnow().isoformat()
 
-
 def format_money(amount: float, currency: str = "€") -> str:
     return f"{float(amount):.2f} {currency}"
-
 
 def format_minutes(total_min: int) -> str:
     total_min = int(total_min or 0)
@@ -19,7 +16,6 @@ def format_minutes(total_min: int) -> str:
     if hours:
         return f"{hours}h"
     return f"{minutes}m"
-
 
 def format_eta_days(days: int) -> str:
     days = int(days or 0)

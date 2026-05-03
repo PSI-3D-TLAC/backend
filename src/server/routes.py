@@ -20,7 +20,6 @@ from ..use_cases import (
     UC06_support_dashboard,
 )
 
-
 def require_role(*allowed: str):
     allowed_set = {r.lower() for r in allowed}
 
@@ -44,17 +43,13 @@ def require_role(*allowed: str):
 
     return decorator
 
-
 health_bp = Blueprint("health", __name__)
-
 
 @health_bp.get("/health")
 def health():
     return jsonify(status="ok")
 
-
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
-
 
 @auth_bp.post("/login")
 def login():
@@ -64,30 +59,24 @@ def login():
         return jsonify(success=False, error="invalid_credentials"), 401
     return jsonify(success=True, **result)
 
-
 @auth_bp.post("/logout")
 def logout():
     data = request.get_json(silent=True) or {}
     token = data.get("token") or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     return jsonify(success=user_mock.logout(token))
 
-
 users_bp = Blueprint("users", __name__, url_prefix="/users")
-
 
 @users_bp.get("")
 def list_users():
     return jsonify(users=user_mock.list_users(), roles=user_mock.list_roles())
 
-
 catalog_bp = Blueprint("catalog", __name__, url_prefix="/catalog")
-
 
 @catalog_bp.get("/products")
 def list_products():
     active = request.args.get("active") in ("1", "true", "True")
     return jsonify(products=catalog_mock.list_products(active_only=active))
-
 
 @catalog_bp.post("/products")
 @require_role("Admin")
@@ -95,14 +84,12 @@ def create_product():
     product = catalog_mock.create_product(request.get_json(silent=True) or {})
     return jsonify(success=True, product=product), 201
 
-
 @catalog_bp.get("/products/<int:pid>")
 def get_product(pid: int):
     product = catalog_mock.get_product(pid)
     if product is None:
         return jsonify(success=False, error="not_found"), 404
     return jsonify(success=True, product=product)
-
 
 @catalog_bp.put("/products/<int:pid>")
 @require_role("Admin")
@@ -112,7 +99,6 @@ def update_product(pid: int):
         return jsonify(success=False, error="not_found"), 404
     return jsonify(success=True, product=product)
 
-
 @catalog_bp.delete("/products/<int:pid>")
 @require_role("Admin")
 def delete_product(pid: int):
@@ -120,18 +106,14 @@ def delete_product(pid: int):
         return jsonify(success=False, error="not_found"), 404
     return jsonify(success=True)
 
-
 inventory_bp = Blueprint("inventory", __name__, url_prefix="/inventory")
-
 
 @inventory_bp.get("/materials")
 def list_materials():
     q = request.args.get("q")
     return jsonify(materials=UC02_select_material.list_materials(q))
 
-
 orders_bp = Blueprint("orders", __name__, url_prefix="/orders")
-
 
 @orders_bp.get("")
 def list_orders():
@@ -141,11 +123,9 @@ def list_orders():
         statuses=UC05_track_order_status.list_statuses(),
     )
 
-
 @orders_bp.get("/options")
 def order_options():
     return jsonify(success=True, **order_mock.list_options())
-
 
 @orders_bp.post("")
 @require_role("Customer")
@@ -159,9 +139,31 @@ def create_order():
         err = UC04_choose_payment.validate(data.get("paymentType"))
         if err:
             return jsonify(success=False, **err), 400
+    delivery = data.get("delivery")
+    if delivery is not None and not isinstance(delivery, dict):
+        return jsonify(success=False, error="invalid_delivery",
+                       message="delivery must be an object"), 400
+    if isinstance(delivery, dict):
+        ship_check = delivery_mock.create_shipment({
+            "orderId": 0,
+            "carrier": delivery.get("carrier"),
+            "deliveryType": delivery.get("deliveryType"),
+            "address": delivery.get("address"),
+        })
+        if isinstance(ship_check, dict) and "error" in ship_check:
+            return jsonify(success=False, **ship_check), 400
+        delivery_mock.SHIPMENTS.pop(ship_check["id"], None)
     order = UC01_create_order.create(data)
-    return jsonify(success=True, order=order), 201
-
+    response = {"success": True, "order": order}
+    if isinstance(delivery, dict):
+        shipment = delivery_mock.create_shipment({
+            "orderId": order.get("id"),
+            "carrier": delivery.get("carrier"),
+            "deliveryType": delivery.get("deliveryType"),
+            "address": delivery.get("address"),
+        })
+        response["shipment"] = shipment
+    return jsonify(**response), 201
 
 @orders_bp.get("/<int:oid>")
 def get_order(oid: int):
@@ -169,7 +171,6 @@ def get_order(oid: int):
     if order is None:
         return jsonify(success=False, error="not_found"), 404
     return jsonify(success=True, order=order)
-
 
 @orders_bp.put("/<int:oid>/status")
 @require_role("Support", "Manager", "Admin")
@@ -182,9 +183,7 @@ def update_order_status(oid: int):
         return jsonify(success=False, **result), 400
     return jsonify(success=True, order=result)
 
-
 payments_bp = Blueprint("payments", __name__, url_prefix="/payments")
-
 
 @payments_bp.post("/pay")
 @require_role("Customer")
@@ -193,14 +192,11 @@ def pay():
     status_code = 200 if result["success"] else 402
     return jsonify(**result), status_code
 
-
 delivery_bp = Blueprint("delivery", __name__, url_prefix="/delivery")
-
 
 @delivery_bp.get("/options")
 def delivery_options():
     return jsonify(success=True, **delivery_mock.list_options())
-
 
 @delivery_bp.post("/shipments")
 @require_role("Customer", "Manager", "Admin")
@@ -209,7 +205,6 @@ def create_shipment():
     if isinstance(result, dict) and "error" in result:
         return jsonify(success=False, **result), 400
     return jsonify(success=True, shipment=result), 201
-
 
 @delivery_bp.put("/shipments/<int:sid>/status")
 def update_shipment_status(sid: int):
@@ -221,16 +216,13 @@ def update_shipment_status(sid: int):
         return jsonify(success=False, **result), 400
     return jsonify(success=True, shipment=result)
 
-
 support_bp = Blueprint("support", __name__, url_prefix="/support")
-
 
 def _current_user() -> dict:
     return {
         "id": (request.headers.get("X-User-Id") or "").strip() or None,
         "role": (request.headers.get("X-User-Role") or "").strip() or None,
     }
-
 
 def _can_view(record: dict, user: dict) -> bool:
     role = (user.get("role") or "").lower()
@@ -240,7 +232,6 @@ def _can_view(record: dict, user: dict) -> bool:
         return str(record.get("customerId")) == str(user.get("id"))
     return False
 
-
 @support_bp.get("/requests")
 def list_requests():
     user = _current_user()
@@ -249,13 +240,11 @@ def list_requests():
         return jsonify(success=False, error="forbidden"), 403
     return jsonify(requests=items, statuses=UC06_support_dashboard.request_statuses())
 
-
 @support_bp.post("/requests")
 @require_role("Customer")
 def create_request():
     record = support_mock.create_request(request.get_json(silent=True) or {}, user=_current_user())
     return jsonify(success=True, request=record), 201
-
 
 @support_bp.get("/requests/<int:rid>")
 def get_request_detail(rid: int):
@@ -265,7 +254,6 @@ def get_request_detail(rid: int):
     if not _can_view(record, _current_user()):
         return jsonify(success=False, error="forbidden"), 403
     return jsonify(success=True, request=record)
-
 
 @support_bp.patch("/requests/<int:rid>/status")
 @require_role("Support", "Admin")
@@ -283,12 +271,10 @@ def patch_request_status(rid: int):
         return jsonify(success=False, **result), 400
     return jsonify(success=True, request=result)
 
-
 @support_bp.put("/requests/<int:rid>/status")
 @require_role("Support", "Admin")
 def update_request_status(rid: int):
     return patch_request_status(rid)
-
 
 @support_bp.get("/complaints")
 def list_complaints():
@@ -302,7 +288,6 @@ def list_complaints():
         statuses=UC06_support_dashboard.complaint_statuses(),
     )
 
-
 @support_bp.post("/complaints")
 @require_role("Customer")
 def create_complaint():
@@ -310,7 +295,6 @@ def create_complaint():
     if "error" in result:
         return jsonify(success=False, **result), 400
     return jsonify(success=True, complaint=result), 201
-
 
 @support_bp.get("/complaints/<int:cid>")
 def get_complaint_detail(cid: int):
@@ -320,7 +304,6 @@ def get_complaint_detail(cid: int):
     if not _can_view(record, _current_user()):
         return jsonify(success=False, error="forbidden"), 403
     return jsonify(success=True, complaint=record)
-
 
 @support_bp.patch("/complaints/<int:cid>/status")
 @require_role("Support", "Admin")
@@ -338,14 +321,11 @@ def patch_complaint_status(cid: int):
         return jsonify(success=False, **result), 400
     return jsonify(success=True, complaint=result)
 
-
 suppliers_bp = Blueprint("suppliers", __name__, url_prefix="/suppliers")
-
 
 @suppliers_bp.get("")
 def list_suppliers():
     return jsonify(suppliers=supplier_mock.list_suppliers())
-
 
 @suppliers_bp.get("/<int:sid>")
 def get_supplier_detail(sid: int):
@@ -354,7 +334,6 @@ def get_supplier_detail(sid: int):
         return jsonify(success=False, error="supplier_not_found",
                        message=f"Supplier #{sid} does not exist."), 404
     return jsonify(success=True, supplier=record)
-
 
 @suppliers_bp.post("")
 @require_role("Manager", "Admin")
@@ -369,7 +348,6 @@ def register_supplier():
         registrationStatus=result.get("registrationStatus", "registered"),
         message=f"Supplier '{result['name']}' registered with ID #{result['id']}.",
     ), 201
-
 
 @suppliers_bp.post("/register")
 @require_role("Manager", "Admin")
@@ -398,7 +376,6 @@ def register_supplier_full():
         )
     return jsonify(payload), 201
 
-
 @suppliers_bp.post("/import-products")
 @suppliers_bp.post("/<int:sid>/import-products")
 @require_role("Manager", "Admin")
@@ -418,7 +395,6 @@ def import_supplier_products(sid: int | None = None):
         return jsonify(**result), 200
     status_code = 404 if result.get("error") == "supplier_not_found" else 400
     return jsonify(**result), status_code
-
 
 ALL_BLUEPRINTS = [
     health_bp,

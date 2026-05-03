@@ -1,6 +1,5 @@
 import StavReklamacie
 
-
 class Reklamacia:
     id: int
     reason: str

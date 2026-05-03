@@ -1,6 +1,5 @@
 import Zamestnanec
 
-
 class Manazer(Zamestnanec.Zamestnanec):
     rola: int
 

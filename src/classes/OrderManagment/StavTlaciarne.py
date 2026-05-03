@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 class StavTlaciarne(Enum):
     AVAILABLE = "AVAILABLE"
     RESERVED = "RESERVED"

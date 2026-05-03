@@ -4,7 +4,6 @@ from enum import Enum
 
 from Loader import Loader, CLASS_REGISTRY
 
-
 class WannabeDatabase:
 
     def __init__(self, loader: Loader = None):
@@ -12,13 +11,11 @@ class WannabeDatabase:
         self.storage: dict = {}
         self._folder_path: str = None
 
-    # ------------------------------------------------------------------ load
     def load(self, folder_path: str) -> None:
 
         self._folder_path = folder_path
         self.storage = self.loader.load_folder(folder_path)
 
-    # ------------------------------------------------------------------ save
     def save(self) -> None:
 
         if self._folder_path is None:
@@ -31,7 +28,6 @@ class WannabeDatabase:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(items, f, ensure_ascii=False, indent=2)
 
-    # ------------------------------------------------------------------- get
     def get(self, class_name: str, id: int):
 
         bucket = self.storage.get(class_name)
@@ -39,7 +35,6 @@ class WannabeDatabase:
             return None
         return bucket.get(id)
 
-    # ----------------------------------------------------------- put / helpers
     def put(self, class_name: str, obj) -> None:
         if class_name not in CLASS_REGISTRY:
             raise KeyError(f"Class '{class_name}' is not registered")

@@ -4,10 +4,8 @@ from typing import Optional
 
 from ..classes.Inventory import mock as inventory_mock
 
-
 def list_materials(query: Optional[str] = None) -> list:
     return inventory_mock.list_materials(query)
-
 
 def get_material(material_id) -> Optional[dict]:
     if material_id is None:
@@ -17,12 +15,10 @@ def get_material(material_id) -> Optional[dict]:
             return m
     return None
 
-
 def validate(material_id) -> Optional[dict]:
     if get_material(material_id) is None:
         return {"error": f"Unknown materialId {material_id!r}"}
     return None
-
 
 def apply_multiplier(base_price: float, material_id) -> float:
     material = get_material(material_id) or {}

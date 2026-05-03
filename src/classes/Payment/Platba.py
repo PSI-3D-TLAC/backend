@@ -1,6 +1,5 @@
 import StavPlatby
 
-
 class Platba:
     id: int
     amount: float

@@ -1,11 +1,11 @@
-"""Lightweight in-memory persistence used by all services.
-
-This is a thin façade over a dict-of-dicts and plays the role of the
-``wannabe-dbms`` storage layer for the running server. The legacy
-``src/wannabe-dbms`` folder is kept as-is (its name contains a hyphen so it is
-not directly importable as a Python package); this module mirrors its idea
-but stays import-friendly.
-"""
+\
+\
+\
+\
+\
+\
+\
+\
 from __future__ import annotations
 
 from itertools import count
@@ -14,9 +14,8 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Type
 
 T = TypeVar("T")
 
-
 class Repository:
-    """Generic repository backed by a dict ``{id: entity}``."""
+\
 
     def __init__(self, name: str) -> None:
         self.name = name
@@ -24,7 +23,6 @@ class Repository:
         self._ids = count(start=1)
         self._lock = RLock()
 
-    # ---------------------------------------------------------- CRUD
     def next_id(self) -> int:
         with self._lock:
             return next(self._ids)
@@ -34,7 +32,7 @@ class Repository:
             if getattr(entity, "id", None) is None:
                 entity.id = next(self._ids)
             else:
-                # Keep the id counter ahead of the manually assigned id
+                                                                       
                 self._ids = count(start=max(entity.id + 1, len(self._items) + 2))
             self._items[entity.id] = entity
             return entity
@@ -72,9 +70,8 @@ class Repository:
     def __len__(self) -> int:
         return len(self._items)
 
-
 class Database:
-    """Container that holds one :class:`Repository` per entity type."""
+\
 
     def __init__(self) -> None:
         self._repos: Dict[str, Repository] = {}
@@ -87,6 +84,5 @@ class Database:
     def names(self) -> Iterable[str]:
         return self._repos.keys()
 
-
-# Singleton used by services and seeded at startup.
+                                                   
 db = Database()

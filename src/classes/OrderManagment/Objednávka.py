@@ -1,6 +1,5 @@
 import StavObjednavky
 
-
 class Objednavka:
     id: int
     status: StavObjednavky.StavObjednavky

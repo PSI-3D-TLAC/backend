@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 class StavZasielky(Enum):
     ODOSLANA = "ODOSLANA"
     V_PREPRAVE = "V_PREPRAVE"

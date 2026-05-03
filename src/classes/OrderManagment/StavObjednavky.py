@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 class StavObjednavky(Enum):
     VYTVORENA = "VYTVORENA"
     CAKA_NA_POTVREDNIE = "CAKA_NA_POTVREDNIE"

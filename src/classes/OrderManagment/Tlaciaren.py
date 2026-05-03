@@ -1,6 +1,5 @@
 import StavTlaciarne
 
-
 class Tlaciaren:
     id: int
     precision: float

@@ -1,4 +1,4 @@
-"""Minimal mock payment gateway. Use ``forceFail`` in the request to simulate failures."""
+\
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,7 +9,6 @@ PAYMENTS: Dict[int, dict] = {}
 _ids = count(start=1)
 
 PAYMENT_METHODS: List[str] = ["card", "bank_transfer", "paypal", "apple_pay"]
-
 
 def pay(data: dict) -> dict:
     pid = next(_ids)

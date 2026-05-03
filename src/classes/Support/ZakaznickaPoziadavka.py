@@ -1,6 +1,5 @@
 import StavZakaznickejPoziadavky
 
-
 class ZakaznickaPoziadavka:
     id: int
     type: str

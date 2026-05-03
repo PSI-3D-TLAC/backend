@@ -10,7 +10,6 @@ from ..utils.pricing import (
 )
 from ..utils.validation import ensure_in
 
-
 def estimate(items: list) -> dict:
     volume = estimate_volume_cm3(items)
     return {
@@ -19,7 +18,6 @@ def estimate(items: list) -> dict:
         "basePrice": base_price_from_volume(volume),
         "feasible": True,
     }
-
 
 def validate(data: dict) -> Optional[dict]:
     err = ensure_in(
@@ -34,7 +32,6 @@ def validate(data: dict) -> Optional[dict]:
         order_mock.PAYMENT_TYPES.keys(),
         "paymentType",
     )
-
 
 def create(data: dict) -> dict:
     return order_mock.create_order(data)

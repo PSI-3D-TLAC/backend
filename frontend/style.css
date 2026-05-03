@@ -1,4 +1,4 @@
-/* ============================ Reset / base ============================ */
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -35,7 +35,7 @@ img { max-width: 100%; display: block; }
 .muted { color: var(--muted); font-size: 0.9rem; }
 .hidden { display: none !important; }
 
-/* ============================ Header ============================ */
+
 .site-header {
   position: fixed;
   top: 0; left: 0; right: 0;
@@ -144,7 +144,7 @@ img { max-width: 100%; display: block; }
 }
 .icon-btn:hover { background: #1d1d1d; transform: translateY(-1px); }
 
-/* Sub navigation */
+
 .sub-nav {
   display: flex;
   gap: 22px;
@@ -163,13 +163,13 @@ img { max-width: 100%; display: block; }
 }
 .sub-nav a:hover { color: var(--orange); border-bottom-color: var(--orange); }
 
-/* ============================ Sections ============================ */
+
 main { max-width: 1200px; margin: 0 auto; padding: 0 22px; }
 .section { padding: 60px 0; }
 .section-head { margin-bottom: 24px; }
 .section-head h2 { font-size: 1.8rem; margin-bottom: 4px; }
 
-/* Hero */
+
 .hero {
   padding: 70px 0 50px;
 }
@@ -226,7 +226,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 22px; }
   transform: translateY(-1px);
 }
 
-/* Cards / catalog */
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -278,7 +278,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 22px; }
 }
 .product-card button:hover { background: var(--orange-2); }
 
-/* Order form */
+
 .order-form, .support-form { display: flex; flex-direction: column; gap: 16px; }
 .form-row { display: flex; flex-wrap: wrap; gap: 16px; }
 .form-row > label { flex: 1 1 220px; display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; color: var(--muted); }
@@ -310,7 +310,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--orange); }
 
 .form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
-/* Inventory */
+
 .inventory-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -341,7 +341,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--orange); }
 .badge.low       { background: rgba(255, 159, 28, 0.15); color: var(--orange); }
 .badge.expected  { background: rgba(120, 140, 255, 0.15); color: #8aa1ff; }
 
-/* Footer */
+
 .site-footer {
   background: #050505;
   border-top: 1px solid var(--border);
@@ -363,7 +363,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--orange); }
 .footer-cols ul li a:hover { color: var(--orange); }
 .footer-bottom { text-align: center; padding-top: 18px; font-size: 0.85rem; }
 
-/* ============================ Responsive ============================ */
+
 @media (max-width: 900px) {
   .cta-btn { display: none; }
   .icon-buttons .icon-btn:nth-child(1) { display: none; }
@@ -387,7 +387,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--orange); }
   .hero h1 { font-size: 1.6rem; }
 }
 
-/* ---- Auth: user box + login modal ---- */
+
 .user-box {
   display: flex;
   align-items: center;
@@ -438,7 +438,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--orange); }
 }
 .role-section.hidden { display: none; }
 
-/* ---- Full-page login screen ---- */
+
 .login-screen {
   position: fixed;
   inset: 0;
@@ -499,11 +499,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--orange); }
 .login-hint ul { margin: 6px 0 0 16px; list-style: disc; }
 .login-hint code { color: var(--orange); }
 
-/* When logged out: hide app chrome and remove header padding. */
+
 body.logged-out { padding-top: 0; }
 body.logged-out .site-header,
 body.logged-out main,
 body.logged-out .site-footer { display: none !important; }
 
-/* When logged in: hide the login screen. */
+
 body.logged-in .login-screen { display: none !important; }

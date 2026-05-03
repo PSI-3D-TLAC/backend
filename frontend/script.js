@@ -1,27 +1,15 @@
-/* ============================================================
- * PrintHub — frontend script
- *
- * IMPORTANT: This frontend has NO local fallback / mock data.
- * All catalog products, inventory materials, orders, delivery
- * options and users are loaded from the backend at runtime
- * (default: http://127.0.0.1:5000). If the backend is offline,
- * the page intentionally shows an error message and renders no
- * cards — this proves whether the backend is actually working.
- * ============================================================ */
+
 
 const API_BASE = "http://127.0.0.1:5000";
 
-// Live state populated from backend responses (empty until fetched).
 let PRODUCTS = [];
 let MATERIALS = [];
 let PRODUCTS_LOADED = false;
 let MATERIALS_LOADED = false;
 
-// Delivery / payment options fetched from backend.
 let DELIVERY_METHODS = [];
 let PAYMENT_TYPES = [];
 
-// Quality multipliers for the (client-side) price/time estimate.
 const QUALITY = {
   low:    { price: 0.8, time: 0.7 },
   medium: { price: 1.0, time: 1.0 },
@@ -31,28 +19,27 @@ const QUALITY = {
 const BACKEND_DOWN_MESSAGE =
   "Backend is not running. Please start the backend server.";
 
-// ---------------------------- Helpers ---------------------------- //
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 function formatPrice(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "—";
-  // Clamp to a sane range so we never produce scientific notation like 1.33e+97.
+  
   const safe = Math.max(0, Math.min(n, 999999));
   return "€" + safe.toFixed(2);
 }
 function formatTime(min) {
   const n = Number(min);
   if (!Number.isFinite(n) || n < 0) return "—";
-  const safe = Math.min(n, 60 * 24 * 365); // cap at ~1 year
+  const safe = Math.min(n, 60 * 24 * 365); 
   const h = Math.floor(safe / 60);
   const m = Math.round(safe % 60);
   return `${h}h ${m}m`;
 }
 
 function parseQuantity(rawValue) {
-  // Returns { value, error } where error is null for valid quantities.
+  
   const trimmed = String(rawValue ?? "").trim();
   if (trimmed === "") return { value: null, error: "Quantity is required." };
   const n = Number(trimmed);
@@ -63,7 +50,6 @@ function parseQuantity(rawValue) {
   return { value: n, error: null };
 }
 
-// ---------------------------- Auth helpers ---------------------------- //
 const FORBIDDEN_MESSAGE = "You do not have permission to perform this action.";
 const STORAGE_KEY = "printhub.user";
 
@@ -110,7 +96,6 @@ async function apiSend(method, path, body) {
   return { res, data };
 }
 
-// ---------------------------- Backend status banner ---------------------------- //
 function ensureBanner() {
   let banner = document.getElementById("backendBanner");
   if (banner) return banner;
@@ -137,7 +122,6 @@ function hideBackendBanner() {
   if (banner) banner.style.display = "none";
 }
 
-// ---------------------------- Header / menu ---------------------------- //
 function setupHamburger() {
   const btn = $("#hamburgerBtn");
   const subNav = $("#subNav");
@@ -147,7 +131,6 @@ function setupHamburger() {
   });
 }
 
-// ---------------------------- Catalog ---------------------------- //
 function renderCatalog(filter = "") {
   const grid = $("#catalogGrid");
   const empty = $("#catalogEmpty");
@@ -197,7 +180,6 @@ function renderCatalog(filter = "") {
     });
   });
 
-  // Admin actions on cards.
   $$(".product-card button[data-edit]").forEach(btn => {
     btn.addEventListener("click", () => adminEditProduct(Number(btn.dataset.edit)));
   });
@@ -240,7 +222,7 @@ function setupSearch() {
   const input = $("#searchInput");
   const btn = $("#searchBtn");
   const handler = () => {
-    if (PRODUCTS.length === 0) return; // nothing to filter when backend is down
+    if (PRODUCTS.length === 0) return; 
     renderCatalog(input.value);
   };
   input.addEventListener("input", handler);
@@ -257,7 +239,6 @@ function setupSearch() {
   });
 }
 
-// ---------------------------- Inventory ---------------------------- //
 function statusKey(s) {
   const v = String(s || "").toLowerCase();
   if (v.includes("low")) return "low";
@@ -310,7 +291,6 @@ async function loadMaterials() {
   }
 }
 
-// ---------------------------- Order form selects ---------------------------- //
 function populateOrderModelSelect() {
   const sel = $("#orderModel");
   if (!sel) return;
@@ -355,7 +335,7 @@ function populateOrderDeliverySelect() {
     opt.textContent = `${d.label} — ${formatPrice(d.price)} · ${days}`;
     sel.appendChild(opt);
   });
-  // Default to first option for convenience.
+  
   if (DELIVERY_METHODS.length > 0 && !sel.value) sel.value = DELIVERY_METHODS[0].id;
 }
 
@@ -402,7 +382,7 @@ function showQuantityError(msg) {
 }
 
 function recalcEstimate() {
-  // Refuse to calculate anything when backend data isn't loaded.
+  
   if (!PRODUCTS_LOADED || !MATERIALS_LOADED) {
     clearEstimate();
     return;
@@ -430,7 +410,6 @@ function recalcEstimate() {
   const itemsPrice = basePrice * qty * mult.price + 1.50;
   const time = 45 * qty * mult.time;
 
-  // Pull delivery / payment selections to compute the final price + ETA.
   const deliveryId = document.getElementById("orderDelivery")?.value || "";
   const paymentId = document.getElementById("orderPayment")?.value || "";
   const delivery = DELIVERY_METHODS.find(d => d.id === deliveryId);
@@ -472,9 +451,8 @@ function updateOrderFormAvailability() {
 }
 
 function renderOrderConfirmation(order) {
-  // Build a richer multi-line order confirmation summarising every relevant
-  // field requested by the issue (model, material, quantity, price, print
-  // time, delivery method, payment type, status).
+
+  
   let el = document.getElementById("orderResult");
   if (!el) {
     el = document.createElement("div");
@@ -590,6 +568,39 @@ function setupOrderForm() {
       return;
     }
 
+    const addrIds = {
+      fullName: "addrFullName", street: "addrStreet", city: "addrCity",
+      postalCode: "addrPostalCode", country: "addrCountry", phone: "addrPhone",
+    };
+    const address = {};
+    const missing = [];
+    for (const [k, id] of Object.entries(addrIds)) {
+      const v = (document.getElementById(id)?.value || "").trim();
+      address[k] = v;
+      if (!v) missing.push(k);
+    }
+    const carrier = document.getElementById("orderCarrier")?.value || "";
+    const deliveryType = document.getElementById("orderDeliveryType")?.value || "Standard";
+    const addrErrEl = document.getElementById("addressError");
+    if (addrErrEl) {
+      addrErrEl.classList.add("hidden");
+      addrErrEl.textContent = "";
+    }
+    if (!carrier) {
+      if (addrErrEl) {
+        addrErrEl.textContent = "Please choose a carrier.";
+        addrErrEl.classList.remove("hidden");
+      }
+      return;
+    }
+    if (missing.length) {
+      if (addrErrEl) {
+        addrErrEl.textContent = "Please fill all delivery address fields: " + missing.join(", ");
+        addrErrEl.classList.remove("hidden");
+      }
+      return;
+    }
+
     const body = {
       productId: productId,
       materialId: materialId,
@@ -598,6 +609,7 @@ function setupOrderForm() {
       customModelFileName: customFileName,
       deliveryMethod,
       paymentType,
+      delivery: { carrier, deliveryType, address },
     };
 
     let res, data;
@@ -624,11 +636,31 @@ function setupOrderForm() {
     renderOrderConfirmation(order);
     if (order.totalPrice != null) $("#estPrice").textContent = formatPrice(order.totalPrice);
     if (order.estimatedTimeMin != null) $("#estTime").textContent = formatTime(order.estimatedTimeMin);
+
+    const shipEl = document.getElementById("orderShipmentResult");
+    const ship = data && data.shipment;
+    if (shipEl) {
+      if (ship) {
+        const a = ship.address || {};
+        shipEl.innerHTML =
+          "<h3>Shipment created</h3>" +
+          "<p><strong>Shipment ID:</strong> " + ship.id + "</p>" +
+          "<p><strong>Carrier:</strong> " + (ship.carrier || "") + "</p>" +
+          "<p><strong>Delivery type:</strong> " + (ship.deliveryType || "") + "</p>" +
+          "<p><strong>Delivery price:</strong> " + (ship.price != null ? formatPrice(ship.price) : "—") + "</p>" +
+          "<p><strong>Tracking number:</strong> " + (ship.trackingNumber || "") + "</p>" +
+          "<p><strong>Status:</strong> " + (ship.status || "") + "</p>" +
+          "<p><strong>Address:</strong> " + [a.fullName, a.street, a.city, a.postalCode, a.country, a.phone].filter(Boolean).join(", ") + "</p>";
+        shipEl.classList.remove("hidden");
+      } else {
+        shipEl.classList.add("hidden");
+        shipEl.innerHTML = "";
+      }
+    }
     loadOrders();
     loadMyOrders();
   });
 
-  // Inline-validate the quantity field as the user types.
   const qtyEl = document.getElementById("orderQty");
   if (qtyEl) qtyEl.addEventListener("input", () => {
     const { error } = parseQuantity(qtyEl.value);
@@ -639,7 +671,6 @@ function setupOrderForm() {
   clearEstimate();
 }
 
-// ---------------------------- Support form ---------------------------- //
 function setupSupportForm() {
   $("#supportForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -672,7 +703,6 @@ function setupSupportForm() {
   });
 }
 
-// ---------------------------- Complaint form (Customer) ---------------------------- //
 function setupComplaintForm() {
   const form = document.getElementById("complaintForm");
   if (!form) return;
@@ -703,7 +733,6 @@ function setupComplaintForm() {
   });
 }
 
-// ---------------------------- Manager forms ---------------------------- //
 function setupSupplierForm() {
   const form = document.getElementById("supplierForm");
   if (!form) return;
@@ -834,7 +863,6 @@ async function loadSuppliersList() {
   }
 }
 
-// ---------------------------- Admin: product CRUD ---------------------------- //
 function adminResetForm() {
   const form = document.getElementById("adminProductForm");
   if (!form) return;
@@ -916,7 +944,6 @@ function setupAdminProductForm() {
   });
 }
 
-// ---------------------------- Role-based dashboards ---------------------------- //
 function renderOrderRows(targetId, orders) {
   const ul = document.getElementById(targetId);
   if (!ul) return;
@@ -959,11 +986,9 @@ async function loadMyOrders() {
   }
 }
 
-// Cached statuses fetched alongside lists.
 let SUPPORT_REQUEST_STATUSES = [];
 let SUPPORT_COMPLAINT_STATUSES = [];
 
-// Currently open detail item, e.g. { kind: "request"|"complaint", id: 42 }.
 let SUPPORT_DETAIL_OPEN = null;
 
 function escapeHtml(s) {

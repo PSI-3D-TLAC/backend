@@ -1,6 +1,5 @@
 import StavZasielky
 
-
 class Zasielka:
     id: int
     trackingNumber: str

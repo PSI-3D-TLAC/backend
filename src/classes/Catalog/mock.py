@@ -1,9 +1,8 @@
-"""Minimal mock catalog: dict-based product CRUD."""
+\
 from __future__ import annotations
 
 from itertools import count
 from typing import Dict, List, Optional
-
 
 _ids = count(start=5)
 
@@ -14,17 +13,14 @@ PRODUCTS: Dict[int, dict] = {
     4: {"id": 4, "name": "Vase Classic", "description": "Decorative spiral vase",       "price": 14.90, "material": "PLA",  "availability": "Available", "category": "Home",   "isActive": True,  "image": "/img/vase.png",   "modelRef": "vase.stl"},
 }
 
-
 def list_products(active_only: bool = False) -> List[dict]:
     items = list(PRODUCTS.values())
     if active_only:
         items = [p for p in items if p.get("isActive")]
     return items
 
-
 def get_product(product_id: int) -> Optional[dict]:
     return PRODUCTS.get(product_id)
-
 
 def create_product(data: dict) -> dict:
     pid = next(_ids)
@@ -43,7 +39,6 @@ def create_product(data: dict) -> dict:
     PRODUCTS[pid] = product
     return product
 
-
 def update_product(product_id: int, data: dict) -> Optional[dict]:
     product = PRODUCTS.get(product_id)
     if product is None:
@@ -52,7 +47,6 @@ def update_product(product_id: int, data: dict) -> Optional[dict]:
         if key in data:
             product[key] = data[key]
     return product
-
 
 def delete_product(product_id: int) -> bool:
     return PRODUCTS.pop(product_id, None) is not None

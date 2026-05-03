@@ -1,9 +1,9 @@
-"""Minimal mock support module: customer requests and complaints.
-
-Supports simple status workflows with history tracking. No real auth — the
-caller passes their identity via the ``user`` argument, which comes from the
-``X-User-Role`` / ``X-User-Id`` headers in the routes layer.
-"""
+\
+\
+\
+\
+\
+\
 from __future__ import annotations
 
 from datetime import datetime
@@ -18,7 +18,6 @@ _comp_ids = count(start=1)
 
 COMPLAINT_REASONS: List[str] = ["damaged", "missing_parts", "full_return"]
 
-# Allowed status values (kept simple — any transition is allowed).
 REQUEST_STATUSES: List[str] = [
     "New",
     "In Progress",
@@ -36,10 +35,8 @@ COMPLAINT_STATUSES: List[str] = [
     "Closed",
 ]
 
-
 def _now() -> str:
     return datetime.utcnow().isoformat()
-
 
 def _history_entry(prev: str, new: str, changed_by: str, comment: str) -> dict:
     return {
@@ -50,8 +47,7 @@ def _history_entry(prev: str, new: str, changed_by: str, comment: str) -> dict:
         "timestamp": _now(),
     }
 
-
-# ---------------------------------------------------------------- requests
+                                                                           
 def create_request(data: dict, user: Optional[dict] = None) -> dict:
     rid = next(_req_ids)
     user = user or {}
@@ -60,7 +56,7 @@ def create_request(data: dict, user: Optional[dict] = None) -> dict:
         "id": rid,
         "customerId": customer_id,
         "orderId": data.get("orderId"),
-        "type": data.get("type", "change"),  # change | cancel | other
+        "type": data.get("type", "change"),                           
         "description": data.get("description", ""),
         "status": "New",
         "createdAt": _now(),
@@ -71,17 +67,14 @@ def create_request(data: dict, user: Optional[dict] = None) -> dict:
     REQUESTS[rid] = record
     return record
 
-
 def list_requests(customer_id: Optional[int] = None) -> List[dict]:
     items = list(REQUESTS.values())
     if customer_id is not None:
         items = [r for r in items if str(r.get("customerId")) == str(customer_id)]
     return items
 
-
 def get_request(rid: int) -> Optional[dict]:
     return REQUESTS.get(rid)
-
 
 def update_request_status(
     rid: int, status: str, comment: str = "", user: Optional[dict] = None
@@ -100,8 +93,7 @@ def update_request_status(
     )
     return record
 
-
-# ---------------------------------------------------------------- complaints
+                                                                             
 def create_complaint(data: dict, user: Optional[dict] = None) -> dict:
     cid = next(_comp_ids)
     reason = data.get("reason", "damaged")
@@ -124,17 +116,14 @@ def create_complaint(data: dict, user: Optional[dict] = None) -> dict:
     COMPLAINTS[cid] = record
     return record
 
-
 def list_complaints(customer_id: Optional[int] = None) -> List[dict]:
     items = list(COMPLAINTS.values())
     if customer_id is not None:
         items = [c for c in items if str(c.get("customerId")) == str(customer_id)]
     return items
 
-
 def get_complaint(cid: int) -> Optional[dict]:
     return COMPLAINTS.get(cid)
-
 
 def update_complaint_status(
     cid: int, status: str, comment: str = "", user: Optional[dict] = None
