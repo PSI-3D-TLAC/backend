@@ -724,8 +724,21 @@ function setupSupplierForm() {
       return;
     }
     if (res.status === 403) { status.textContent = "❌ " + FORBIDDEN_MESSAGE; return; }
-    if (!res.ok) { status.textContent = "❌ HTTP " + res.status; return; }
-    status.textContent = `✅ Supplier #${data.supplier?.id} registered (login: ${data.supplier?.username} / ${data.supplier?.password}).`;
+    if (!res.ok || !data?.success) {
+      status.textContent = "❌ " + ((data && (data.message || data.error)) || ("HTTP " + res.status));
+      return;
+    }
+    const sid = data.supplierId ?? data.supplier?.id;
+    const sname = data.supplier?.name ?? payload.name;
+    const sstatus = data.registrationStatus ?? "registered";
+    status.innerHTML =
+      `✅ Supplier registered successfully.<br>` +
+      `<strong>ID:</strong> #${sid} &nbsp; <strong>Name:</strong> ${sname} &nbsp; ` +
+      `<strong>Status:</strong> ${sstatus}<br>` +
+      `<span class="muted">Login: ${data.supplier?.username} / ${data.supplier?.password}. ` +
+      `Use ID #${sid} to import products.</span>`;
+    const importInput = document.getElementById("importSupplierId");
+    if (importInput) importInput.value = String(sid);
     form.reset();
     loadSuppliersList();
   });
@@ -737,11 +750,20 @@ function setupImportForm() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const status = document.getElementById("importStatus");
-    const sid = Number(document.getElementById("importSupplierId").value);
+    const sidRaw = document.getElementById("importSupplierId").value.trim();
     const link = document.getElementById("importLink").value.trim();
+    if (!sidRaw) {
+      status.textContent = "❌ Supplier ID is required.";
+      return;
+    }
+    const sid = Number(sidRaw);
+    if (!Number.isFinite(sid) || sid <= 0) {
+      status.textContent = "❌ Supplier ID must be a positive number.";
+      return;
+    }
     let res, data;
     try {
-      ({ res, data } = await apiSend("POST", `/suppliers/${sid}/import-products`, { link }));
+      ({ res, data } = await apiSend("POST", `/suppliers/${sid}/import-products`, { supplierId: sid, link }));
     } catch (err) {
       console.error("Failed to import-products:", err);
       status.textContent = "❌ " + BACKEND_DOWN_MESSAGE;
@@ -749,9 +771,11 @@ function setupImportForm() {
     }
     if (res.status === 403) { status.textContent = "❌ " + FORBIDDEN_MESSAGE; return; }
     if (data && data.success) {
-      status.textContent = `✅ Imported ${data.imported} products from supplier #${sid}.`;
+      status.textContent = `✅ Imported ${data.imported} products linked to supplier #${data.supplierId ?? sid}.`;
+      loadSuppliersList();
     } else {
-      status.textContent = "❌ " + ((data && (data.error || data.message)) || ("HTTP " + res.status));
+      const msg = (data && (data.message || data.error)) || ("HTTP " + res.status);
+      status.textContent = "❌ " + msg;
     }
   });
 }
@@ -770,6 +794,12 @@ async function loadSuppliersList() {
         </div>
         <span class="badge available">${(s.products || []).length} products</span>
       </li>`).join("") || `<li class="muted">No suppliers yet.</li>`;
+    const dl = document.getElementById("supplierIdOptions");
+    if (dl) {
+      dl.innerHTML = items
+        .map(s => `<option value="${s.id}">${s.name ?? ""}</option>`)
+        .join("");
+    }
   } catch (err) {
     console.error("Failed to load /suppliers:", err);
     ul.innerHTML = `<li class="muted">${BACKEND_DOWN_MESSAGE}</li>`;

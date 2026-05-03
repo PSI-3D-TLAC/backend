@@ -403,10 +403,11 @@
       <form id="importForm" class="support-form card">
         <div class="form-row">
           <label>Supplier ID
-            <input type="number" id="importSupplierId" min="1" required />
+            <input type="number" id="importSupplierId" list="supplierIdOptions" min="1" required />
+            <datalist id="supplierIdOptions"></datalist>
           </label>
-          <label>Catalog link
-            <input type="text" id="importLink" placeholder="https://..." required />
+          <label>Catalog link (optional)
+            <input type="text" id="importLink" placeholder="https://..." />
           </label>
         </div>
         <div class="form-actions">
