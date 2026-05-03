@@ -17,6 +17,10 @@ let MATERIALS = [];
 let PRODUCTS_LOADED = false;
 let MATERIALS_LOADED = false;
 
+// Delivery / payment options fetched from backend.
+let DELIVERY_METHODS = [];
+let PAYMENT_TYPES = [];
+
 // Quality multipliers for the (client-side) price/time estimate.
 const QUALITY = {
   low:    { price: 0.8, time: 0.7 },
@@ -334,6 +338,55 @@ function populateOrderMaterialSelect() {
 function clearEstimate() {
   $("#estPrice").textContent = "—";
   $("#estTime").textContent = "—";
+  const ids = ["estItemsPrice", "estDelivery", "estPaySurcharge", "estDeliveryDays"];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "—"; });
+}
+
+function populateOrderDeliverySelect() {
+  const sel = document.getElementById("orderDelivery");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— choose —</option>';
+  DELIVERY_METHODS.forEach(d => {
+    const opt = document.createElement("option");
+    opt.value = d.id;
+    const days = d.estimatedDeliveryDays === 0
+      ? "same day"
+      : `${d.estimatedDeliveryDays} day${d.estimatedDeliveryDays === 1 ? "" : "s"}`;
+    opt.textContent = `${d.label} — ${formatPrice(d.price)} · ${days}`;
+    sel.appendChild(opt);
+  });
+  // Default to first option for convenience.
+  if (DELIVERY_METHODS.length > 0 && !sel.value) sel.value = DELIVERY_METHODS[0].id;
+}
+
+function populateOrderPaymentSelect() {
+  const sel = document.getElementById("orderPayment");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— choose —</option>';
+  PAYMENT_TYPES.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    const sur = Number(p.surcharge) > 0 ? ` (+${formatPrice(p.surcharge)})` : "";
+    opt.textContent = `${p.label}${sur}`;
+    sel.appendChild(opt);
+  });
+  if (PAYMENT_TYPES.length > 0 && !sel.value) sel.value = PAYMENT_TYPES[0].id;
+}
+
+async function loadOrderOptions() {
+  try {
+    const data = await apiGet("/orders/options");
+    DELIVERY_METHODS = Array.isArray(data.deliveryMethods) ? data.deliveryMethods : [];
+    PAYMENT_TYPES = Array.isArray(data.paymentTypes) ? data.paymentTypes : [];
+    populateOrderDeliverySelect();
+    populateOrderPaymentSelect();
+    return true;
+  } catch (err) {
+    console.error("Failed to load /orders/options:", err);
+    DELIVERY_METHODS = [];
+    PAYMENT_TYPES = [];
+    return false;
+  }
 }
 
 function showQuantityError(msg) {
@@ -374,11 +427,29 @@ function recalcEstimate() {
   const basePrice = Number(product.price);
   if (!Number.isFinite(basePrice)) { clearEstimate(); return; }
 
-  const price = basePrice * qty * mult.price + 1.50;
+  const itemsPrice = basePrice * qty * mult.price + 1.50;
   const time = 45 * qty * mult.time;
 
-  $("#estPrice").textContent = formatPrice(price);
+  // Pull delivery / payment selections to compute the final price + ETA.
+  const deliveryId = document.getElementById("orderDelivery")?.value || "";
+  const paymentId = document.getElementById("orderPayment")?.value || "";
+  const delivery = DELIVERY_METHODS.find(d => d.id === deliveryId);
+  const payment = PAYMENT_TYPES.find(p => p.id === paymentId);
+  const deliveryPrice = delivery ? Number(delivery.price) : 0;
+  const paySurcharge = payment ? Number(payment.surcharge) : 0;
+  const total = itemsPrice + deliveryPrice + paySurcharge;
+
+  $("#estItemsPrice").textContent = formatPrice(itemsPrice);
+  $("#estDelivery").textContent = delivery
+    ? `${formatPrice(deliveryPrice)} · ${delivery.estimatedDeliveryDays === 0 ? "same day" : delivery.estimatedDeliveryDays + " day(s)"}`
+    : "—";
+  $("#estPaySurcharge").textContent = payment ? formatPrice(paySurcharge) : "—";
+  $("#estPrice").textContent = formatPrice(total);
   $("#estTime").textContent = formatTime(time);
+  const days = delivery ? delivery.estimatedDeliveryDays : null;
+  $("#estDeliveryDays").textContent = days == null
+    ? "—"
+    : (days === 0 ? "Same day (pickup)" : `~${days} day${days === 1 ? "" : "s"}`);
 }
 
 function updateOrderFormAvailability() {
@@ -400,6 +471,49 @@ function updateOrderFormAvailability() {
   if (!ok) clearEstimate();
 }
 
+function renderOrderConfirmation(order) {
+  // Build a richer multi-line order confirmation summarising every relevant
+  // field requested by the issue (model, material, quantity, price, print
+  // time, delivery method, payment type, status).
+  let el = document.getElementById("orderResult");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "orderResult";
+    el.style.cssText = "margin:14px 0 0;padding:14px;border-radius:10px;font-weight:500;";
+    const form = document.getElementById("orderForm");
+    if (form) form.appendChild(el);
+  }
+  el.style.background = "#0d3a13";
+  el.style.color = "#b4ffc1";
+  el.style.border = "1px solid #4caf50";
+  el.style.display = "block";
+  if (!order || !order.id) {
+    el.textContent = "✅ Order created.";
+    return;
+  }
+  const item = (order.items && order.items[0]) || {};
+  const product = PRODUCTS.find(p => p.id === item.productId);
+  const material = MATERIALS.find(m => m.id === item.materialId);
+  const dm = DELIVERY_METHODS.find(d => d.id === order.deliveryMethod);
+  const pt = PAYMENT_TYPES.find(p => p.id === order.paymentType);
+  const days = order.estimatedDeliveryDays;
+  const etaTxt = days == null ? "—" : (days === 0 ? "Same day (pickup)" : `~${days} day${days === 1 ? "" : "s"}`);
+  el.innerHTML = `
+    <div style="font-size:1.05rem;margin-bottom:6px;">✅ <strong>Order #${order.id}</strong> created — status: <strong>${order.status || "Created"}</strong></div>
+    <ul style="list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 18px;">
+      <li><span style="opacity:.7;">Model:</span> ${escapeHtml(product?.name ?? item.modelRef ?? "—")}</li>
+      <li><span style="opacity:.7;">Material:</span> ${escapeHtml(material?.name ?? "—")}</li>
+      <li><span style="opacity:.7;">Quantity:</span> ${item.quantity ?? "—"}</li>
+      <li><span style="opacity:.7;">Print quality:</span> ${escapeHtml(item.precision ?? "—")}</li>
+      <li><span style="opacity:.7;">Print time:</span> ${formatTime(order.estimatedTimeMin)}</li>
+      <li><span style="opacity:.7;">Delivery:</span> ${escapeHtml(dm?.label ?? order.deliveryMethod ?? "—")} (${formatPrice(order.deliveryPrice ?? 0)})</li>
+      <li><span style="opacity:.7;">Estimated delivery:</span> ${etaTxt}</li>
+      <li><span style="opacity:.7;">Payment:</span> ${escapeHtml(pt?.label ?? order.paymentType ?? "—")}${order.paymentSurcharge ? " (+" + formatPrice(order.paymentSurcharge) + ")" : ""}</li>
+      <li><span style="opacity:.7;">Total price:</span> <strong>${formatPrice(order.totalPrice)}</strong></li>
+    </ul>
+  `;
+}
+
 function setOrderResult(message, isError) {
   let el = document.getElementById("orderResult");
   if (!el) {
@@ -417,7 +531,7 @@ function setOrderResult(message, isError) {
 }
 
 function setupOrderForm() {
-  ["orderModel", "orderMaterial", "orderQuality", "orderQty"].forEach(id => {
+  ["orderModel", "orderMaterial", "orderQuality", "orderQty", "orderDelivery", "orderPayment"].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener("change", recalcEstimate);
@@ -465,12 +579,25 @@ function setupOrderForm() {
       return;
     }
 
+    const deliveryMethod = document.getElementById("orderDelivery")?.value || "";
+    const paymentType = document.getElementById("orderPayment")?.value || "";
+    if (!deliveryMethod) {
+      setOrderResult("Please choose a delivery method.", true);
+      return;
+    }
+    if (!paymentType) {
+      setOrderResult("Please choose a payment type.", true);
+      return;
+    }
+
     const body = {
       productId: productId,
       materialId: materialId,
       printQuality: quality,
       quantity: qty,
       customModelFileName: customFileName,
+      deliveryMethod,
+      paymentType,
     };
 
     let res, data;
@@ -494,17 +621,11 @@ function setupOrderForm() {
     }
 
     const order = (data && data.order) || {};
-    const idText   = order.id != null ? order.id : "?";
-    const priceTxt = order.totalPrice != null ? formatPrice(order.totalPrice) : "—";
-    const timeTxt  = order.estimatedTimeMin != null ? formatTime(order.estimatedTimeMin) : "—";
-    const status   = order.status || "?";
-    setOrderResult(
-      `✅ Order #${idText} created — status: ${status}, price: ${priceTxt}, est. print time: ${timeTxt}.`,
-      false
-    );
+    renderOrderConfirmation(order);
     if (order.totalPrice != null) $("#estPrice").textContent = formatPrice(order.totalPrice);
     if (order.estimatedTimeMin != null) $("#estTime").textContent = formatTime(order.estimatedTimeMin);
     loadOrders();
+    loadMyOrders();
   });
 
   // Inline-validate the quantity field as the user types.
@@ -547,6 +668,7 @@ function setupSupportForm() {
     $("#supportStatus").textContent =
       `✅ Request sent (#${data.request?.id ?? "?"}). Type: ${payload.type}, order #${payload.orderId}.`;
     $("#supportForm").reset();
+    loadMySupport();
   });
 }
 
@@ -577,6 +699,7 @@ function setupComplaintForm() {
     }
     status.textContent = `✅ Complaint #${data.complaint?.id ?? "?"} filed for order ${payload.orderId}.`;
     form.reset();
+    loadMySupport();
   });
 }
 
@@ -743,14 +866,26 @@ function renderOrderRows(targetId, orders) {
     ul.innerHTML = `<li class="muted">No orders.</li>`;
     return;
   }
-  ul.innerHTML = orders.map(o => `
+  const badgeFor = (s) => {
+    if (s === "Delivered") return "available";
+    if (s === "Created" || s === "Paid") return "expected";
+    return "low";
+  };
+  ul.innerHTML = orders.map(o => {
+    const dm = DELIVERY_METHODS.find(d => d.id === o.deliveryMethod);
+    const pt = PAYMENT_TYPES.find(p => p.id === o.paymentType);
+    const dmLabel = dm ? dm.label : (o.deliveryMethod || "—");
+    const ptLabel = pt ? pt.label : (o.paymentType || "—");
+    return `
     <li class="inventory-item">
       <div>
         <div class="name">Order #${o.id} — ${o.status}</div>
         <div class="sub">customer #${o.customerId} · ${formatPrice(o.totalPrice)} · ${formatTime(o.estimatedTimeMin)}</div>
+        <div class="sub">${dmLabel} · ${ptLabel}</div>
       </div>
-      <span class="badge ${o.status === "Delivered" ? "available" : (o.status === "Created" ? "expected" : "low")}">${o.status}</span>
-    </li>`).join("");
+      <span class="badge ${badgeFor(o.status)}">${o.status}</span>
+    </li>`;
+  }).join("");
 }
 
 async function loadMyOrders() {
@@ -766,17 +901,116 @@ async function loadMyOrders() {
   }
 }
 
-async function supportResolveRequest(rid) {
+// Cached statuses fetched alongside lists.
+let SUPPORT_REQUEST_STATUSES = [];
+let SUPPORT_COMPLAINT_STATUSES = [];
+
+// Currently open detail item, e.g. { kind: "request"|"complaint", id: 42 }.
+let SUPPORT_DETAIL_OPEN = null;
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function setSupportDetailMsg(message, isError) {
+  const el = document.getElementById("supportDetailMsg");
+  if (!el) return;
+  el.textContent = message || "";
+  el.style.color = isError ? "#ffb4b4" : "#b4ffc1";
+}
+
+function renderSupportDetail(kind, record) {
+  const wrap = document.getElementById("supportDetail");
+  if (!wrap || !record) return;
+  wrap.classList.remove("hidden");
+  SUPPORT_DETAIL_OPEN = { kind, id: record.id };
+
+  const isRequest = kind === "request";
+  document.getElementById("supportDetailTitle").textContent =
+    `${isRequest ? "Request" : "Complaint"} #${record.id}`;
+
+  const typeOrReason = isRequest ? (record.type ?? "—") : (record.reason ?? "—");
+  const meta = document.getElementById("supportDetailMeta");
+  meta.innerHTML = `
+    <div><strong>ID:</strong> ${record.id}</div>
+    <div><strong>Customer ID:</strong> ${escapeHtml(record.customerId ?? "—")}</div>
+    <div><strong>Order ID:</strong> ${escapeHtml(record.orderId ?? "—")}</div>
+    <div><strong>${isRequest ? "Type" : "Reason"}:</strong> ${escapeHtml(typeOrReason)}</div>
+    <div><strong>Message:</strong> ${escapeHtml(record.description ?? "")}</div>
+    <div><strong>Current status:</strong> ${escapeHtml(record.status ?? "—")}</div>
+    <div><strong>Created:</strong> ${escapeHtml(record.createdAt ?? "—")}</div>
+  `;
+
+  const history = Array.isArray(record.history) ? record.history : [];
+  const histList = document.getElementById("supportDetailHistory");
+  histList.innerHTML = history.length ? history.map(h => `
+    <li class="inventory-item">
+      <div>
+        <div class="name">${escapeHtml(h.previousStatus || "—")} → ${escapeHtml(h.newStatus)}</div>
+        <div class="sub">by ${escapeHtml(h.changedBy)} · ${escapeHtml(h.timestamp)}${h.comment ? " · " + escapeHtml(h.comment) : ""}</div>
+      </div>
+    </li>`).join("") : `<li class="muted">No history yet.</li>`;
+
+  const statuses = isRequest ? SUPPORT_REQUEST_STATUSES : SUPPORT_COMPLAINT_STATUSES;
+  const sel = document.getElementById("supportDetailStatus");
+  sel.innerHTML = statuses.map(s =>
+    `<option value="${escapeHtml(s)}"${s === record.status ? " selected" : ""}>${escapeHtml(s)}</option>`
+  ).join("");
+
+  document.getElementById("supportDetailComment").value = "";
+  setSupportDetailMsg("", false);
+}
+
+async function openSupportDetail(kind, id) {
+  const path = kind === "request" ? `/support/requests/${id}` : `/support/complaints/${id}`;
+  try {
+    const data = await apiGet(path, { auth: true });
+    const record = kind === "request" ? data.request : data.complaint;
+    renderSupportDetail(kind, record);
+    document.getElementById("supportDetail").scrollIntoView({ behavior: "smooth" });
+  } catch (err) {
+    console.error("Failed to load detail:", err);
+    setSupportDetailMsg(err.forbidden ? FORBIDDEN_MESSAGE : BACKEND_DOWN_MESSAGE, true);
+  }
+}
+
+async function submitSupportDetailUpdate() {
+  if (!SUPPORT_DETAIL_OPEN) return;
+  const { kind, id } = SUPPORT_DETAIL_OPEN;
+  const status = document.getElementById("supportDetailStatus").value;
+  const comment = document.getElementById("supportDetailComment").value.trim();
+  const path = kind === "request"
+    ? `/support/requests/${id}/status`
+    : `/support/complaints/${id}/status`;
   let res, data;
   try {
-    ({ res, data } = await apiSend("PUT", `/support/requests/${rid}/status`, { status: "Resolved" }));
+    ({ res, data } = await apiSend("PATCH", path, { status, comment }));
   } catch (err) {
-    console.error("Failed to resolve support request:", err);
+    console.error("Failed to PATCH status:", err);
+    setSupportDetailMsg("❌ " + BACKEND_DOWN_MESSAGE, true);
     return;
   }
-  if (res.status === 403) { console.error(FORBIDDEN_MESSAGE); return; }
-  if (!res.ok) { console.error("Resolve failed:", data); return; }
+  if (res.status === 403) { setSupportDetailMsg("❌ " + FORBIDDEN_MESSAGE, true); return; }
+  if (!res.ok) {
+    setSupportDetailMsg("❌ " + ((data && (data.message || data.error)) || ("HTTP " + res.status)), true);
+    return;
+  }
+  setSupportDetailMsg("✅ Status updated.", false);
+  // Refresh detail and the dashboard list.
+  await openSupportDetail(kind, id);
   loadSupportDashboard();
+}
+
+function setupSupportDetail() {
+  const closeBtn = document.getElementById("supportDetailClose");
+  if (closeBtn) closeBtn.addEventListener("click", () => {
+    document.getElementById("supportDetail").classList.add("hidden");
+    SUPPORT_DETAIL_OPEN = null;
+  });
+  const updBtn = document.getElementById("supportDetailUpdateBtn");
+  if (updBtn) updBtn.addEventListener("click", submitSupportDetailUpdate);
 }
 
 async function loadSupportDashboard() {
@@ -785,20 +1019,21 @@ async function loadSupportDashboard() {
   // Requests
   try {
     const data = await apiGet("/support/requests", { auth: true });
+    SUPPORT_REQUEST_STATUSES = Array.isArray(data.statuses) ? data.statuses : SUPPORT_REQUEST_STATUSES;
     const list = Array.isArray(data.requests) ? data.requests : [];
     document.getElementById("supportReqList").innerHTML = list.map(r => `
       <li class="inventory-item">
         <div>
-          <div class="name">Req #${r.id} — order ${r.orderId}</div>
-          <div class="sub">${r.type ?? ""} · ${r.description ?? ""}</div>
+          <div class="name">Req #${r.id} — order ${escapeHtml(r.orderId ?? "—")}</div>
+          <div class="sub">${escapeHtml(r.type ?? "")} · ${escapeHtml(r.description ?? "")}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <span class="badge ${r.status === "Resolved" ? "available" : "expected"}">${r.status ?? "Open"}</span>
-          ${r.status === "Resolved" ? "" : `<button type="button" class="btn-ghost small" data-resolve="${r.id}">Mark resolved</button>`}
+          <span class="badge ${r.status === "Resolved" || r.status === "Closed" ? "available" : "expected"}">${escapeHtml(r.status ?? "")}</span>
+          <button type="button" class="btn-ghost small" data-open-req="${r.id}">Open</button>
         </div>
       </li>`).join("") || `<li class="muted">No requests.</li>`;
-    $$(`#supportReqList button[data-resolve]`).forEach(btn => {
-      btn.addEventListener("click", () => supportResolveRequest(Number(btn.dataset.resolve)));
+    $$(`#supportReqList button[data-open-req]`).forEach(btn => {
+      btn.addEventListener("click", () => openSupportDetail("request", Number(btn.dataset.openReq)));
     });
   } catch (err) {
     console.error("Failed to load /support/requests:", err);
@@ -808,26 +1043,64 @@ async function loadSupportDashboard() {
   // Complaints
   try {
     const data = await apiGet("/support/complaints", { auth: true });
+    SUPPORT_COMPLAINT_STATUSES = Array.isArray(data.statuses) ? data.statuses : SUPPORT_COMPLAINT_STATUSES;
     const list = Array.isArray(data.complaints) ? data.complaints : [];
     document.getElementById("supportCmpList").innerHTML = list.map(c => `
       <li class="inventory-item">
         <div>
-          <div class="name">Complaint #${c.id} — order ${c.orderId}</div>
-          <div class="sub">${c.reason ?? ""} · ${c.description ?? ""}</div>
+          <div class="name">Complaint #${c.id} — order ${escapeHtml(c.orderId ?? "—")}</div>
+          <div class="sub">${escapeHtml(c.reason ?? "")} · ${escapeHtml(c.description ?? "")}</div>
         </div>
-        <span class="badge low">${c.status ?? "Open"}</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="badge low">${escapeHtml(c.status ?? "")}</span>
+          <button type="button" class="btn-ghost small" data-open-cmp="${c.id}">Open</button>
+        </div>
       </li>`).join("") || `<li class="muted">No complaints.</li>`;
+    $$(`#supportCmpList button[data-open-cmp]`).forEach(btn => {
+      btn.addEventListener("click", () => openSupportDetail("complaint", Number(btn.dataset.openCmp)));
+    });
   } catch (err) {
     console.error("Failed to load /support/complaints:", err);
     document.getElementById("supportCmpList").innerHTML = err.forbidden
       ? `<li class="muted">${FORBIDDEN_MESSAGE}</li>` : `<li class="muted">${BACKEND_DOWN_MESSAGE}</li>`;
   }
-  // Orders (read-only view of customer orders)
+}
+
+// ---------------------------- My Support (Customer) ---------------------------- //
+async function loadMySupport() {
+  const u = getCurrentUser();
+  if (!u || u.role !== "Customer") return;
+  const reqEl = document.getElementById("myReqList");
+  const cmpEl = document.getElementById("myCmpList");
   try {
-    const data = await apiGet("/orders");
-    renderOrderRows("supportOrdersList", data.orders || []);
+    const data = await apiGet("/support/requests", { auth: true });
+    const list = Array.isArray(data.requests) ? data.requests : [];
+    if (reqEl) reqEl.innerHTML = list.map(r => `
+      <li class="inventory-item">
+        <div>
+          <div class="name">Req #${r.id} — order ${escapeHtml(r.orderId ?? "—")}</div>
+          <div class="sub">${escapeHtml(r.type ?? "")} · ${escapeHtml(r.description ?? "")}</div>
+        </div>
+        <span class="badge ${r.status === "Resolved" || r.status === "Closed" ? "available" : "expected"}">${escapeHtml(r.status ?? "")}</span>
+      </li>`).join("") || `<li class="muted">No requests yet.</li>`;
   } catch (err) {
-    console.error("Failed to load /orders:", err);
+    console.error("Failed to load my support requests:", err);
+    if (reqEl) reqEl.innerHTML = `<li class="muted">${BACKEND_DOWN_MESSAGE}</li>`;
+  }
+  try {
+    const data = await apiGet("/support/complaints", { auth: true });
+    const list = Array.isArray(data.complaints) ? data.complaints : [];
+    if (cmpEl) cmpEl.innerHTML = list.map(c => `
+      <li class="inventory-item">
+        <div>
+          <div class="name">Complaint #${c.id} — order ${escapeHtml(c.orderId ?? "—")}</div>
+          <div class="sub">${escapeHtml(c.reason ?? "")} · ${escapeHtml(c.description ?? "")}</div>
+        </div>
+        <span class="badge low">${escapeHtml(c.status ?? "")}</span>
+      </li>`).join("") || `<li class="muted">No complaints yet.</li>`;
+  } catch (err) {
+    console.error("Failed to load my complaints:", err);
+    if (cmpEl) cmpEl.innerHTML = `<li class="muted">${BACKEND_DOWN_MESSAGE}</li>`;
   }
 }
 
@@ -889,11 +1162,13 @@ async function loadAllAppData() {
     loadMaterials(),
     loadOrders(),
     loadDeliveryOptions(),
+    loadOrderOptions(),
     loadUsers(),
   ]);
   if (results.some(ok => !ok)) showBackendDown();
   else hideBackendBanner();
   loadMyOrders();
+  loadMySupport();
   loadSupportDashboard();
   loadManagerDashboard();
 }
@@ -936,6 +1211,20 @@ function setupLoginUI() {
 }
 
 // ---------------------------- Category buttons ---------------------------- //
+function scrollToSection(id) {
+  const el = document.getElementById(id);
+  if (!el) return false;
+  // If the section is hidden by role, fall back to home/catalog so the button
+  // is never a dead end.
+  if (el.classList.contains("hidden")) {
+    const fallback = document.getElementById("home") || document.getElementById("catalog");
+    if (fallback) fallback.scrollIntoView({ behavior: "smooth" });
+    return false;
+  }
+  el.scrollIntoView({ behavior: "smooth" });
+  return true;
+}
+
 function setupCategoryButtons() {
   $$(".cat-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -947,7 +1236,23 @@ function setupCategoryButtons() {
         support:   "support",
       };
       const id = map[target];
-      if (id) document.getElementById(id).scrollIntoView({ behavior: "smooth" });
+      if (id) scrollToSection(id);
+    });
+  });
+}
+
+// Make every header / sub-nav anchor robust: always smooth-scroll to the
+// matching section if it exists, even when the section was added later.
+function setupNavLinks() {
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener("click", (e) => {
+      const href = a.getAttribute("href") || "";
+      const id = href.slice(1);
+      if (!id) return;
+      const target = document.getElementById(id);
+      if (!target) return; // let browser handle (or do nothing)
+      e.preventDefault();
+      scrollToSection(id);
     });
   });
 }
@@ -995,13 +1300,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupComplaintForm();
   setupSupplierForm();
   setupImportForm();
+  setupSupportDetail();
   setupAdminProductForm();
   setupLoginUI();
   setupCategoryButtons();
+  setupNavLinks();
 
   // Initial selects state (empty until backend responds).
   populateOrderModelSelect();
   populateOrderMaterialSelect();
+  populateOrderDeliverySelect();
+  populateOrderPaymentSelect();
 
   // Decide whether to show the login screen or the main app based on storage.
   applyAuthState();

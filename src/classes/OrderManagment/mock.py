@@ -1,4 +1,8 @@
-"""Minimal mock orders: in-memory dict + simple status transitions."""
+"""Minimal mock orders: in-memory dict + simple status transitions.
+
+Adds simple delivery method and payment type configuration that affect the
+final order price and estimated delivery time.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -6,11 +10,29 @@ from itertools import count
 from typing import Dict, List, Optional
 
 
+# Simplified, user-facing order lifecycle (issue requirement).
 ORDER_STATUSES: List[str] = [
-    "Created", "Evaluated", "WaitingForConfirmation", "Confirmed", "Paid",
-    "Processing", "PrinterReserved", "Printing", "Packing", "ReadyForDelivery",
-    "Shipped", "Delivered", "Cancelled", "Suspended",
+    "Created", "Paid", "Printing", "Shipped", "Delivered", "Cancelled",
 ]
+
+# ---------------------------------------------------------------- delivery
+# Each delivery method affects:
+#   - price (added to the order total)
+#   - estimatedDeliveryDays (added to the customer-visible ETA)
+DELIVERY_METHODS: Dict[str, dict] = {
+    "pickup":  {"label": "Personal pickup",  "price": 0.00, "estimatedDeliveryDays": 0},
+    "courier": {"label": "Courier (standard)", "price": 4.50, "estimatedDeliveryDays": 3},
+    "express": {"label": "Express courier",  "price": 9.90, "estimatedDeliveryDays": 1},
+}
+
+# ---------------------------------------------------------------- payment
+# Each payment type may add a small surcharge (e.g. cash on delivery).
+PAYMENT_TYPES: Dict[str, dict] = {
+    "card":             {"label": "Card",             "surcharge": 0.00},
+    "online":           {"label": "Online payment",   "surcharge": 0.00},
+    "cash_on_delivery": {"label": "Cash on delivery", "surcharge": 1.50},
+}
+
 
 _ids = count(start=4)
 
@@ -24,7 +46,12 @@ ORDERS: Dict[int, dict] = {
         "estimatedVolumeCm3": 120.0,
         "estimatedTimeMin": 90,
         "feasible": True,
-        "totalPrice": 29.80,
+        "deliveryMethod": "courier",
+        "deliveryPrice": 4.50,
+        "estimatedDeliveryDays": 3,
+        "paymentType": "card",
+        "paymentSurcharge": 0.00,
+        "totalPrice": 34.30,
         "status": "Created",
         "createdAt": datetime.utcnow().isoformat(),
     },
@@ -37,6 +64,11 @@ ORDERS: Dict[int, dict] = {
         "estimatedVolumeCm3": 80.0,
         "estimatedTimeMin": 75,
         "feasible": True,
+        "deliveryMethod": "pickup",
+        "deliveryPrice": 0.00,
+        "estimatedDeliveryDays": 0,
+        "paymentType": "online",
+        "paymentSurcharge": 0.00,
         "totalPrice": 18.50,
         "status": "Paid",
         "createdAt": datetime.utcnow().isoformat(),
@@ -50,7 +82,12 @@ ORDERS: Dict[int, dict] = {
         "estimatedVolumeCm3": 200.0,
         "estimatedTimeMin": 180,
         "feasible": True,
-        "totalPrice": 42.00,
+        "deliveryMethod": "express",
+        "deliveryPrice": 9.90,
+        "estimatedDeliveryDays": 1,
+        "paymentType": "cash_on_delivery",
+        "paymentSurcharge": 1.50,
+        "totalPrice": 53.40,
         "status": "Printing",
         "createdAt": datetime.utcnow().isoformat(),
     },
@@ -61,8 +98,51 @@ def _estimate(items: List[dict]) -> dict:
     qty = sum(int(it.get("quantity", 1)) for it in items)
     volume = 60.0 * qty
     time_min = 45 * qty
-    price = round(volume * 0.12 + 5.0, 2)
-    return {"estimatedVolumeCm3": volume, "estimatedTimeMin": time_min, "totalPrice": price, "feasible": True}
+    base_price = round(volume * 0.12 + 5.0, 2)
+    return {
+        "estimatedVolumeCm3": volume,
+        "estimatedTimeMin": time_min,
+        "basePrice": base_price,
+        "feasible": True,
+    }
+
+
+def _resolve_delivery(method: Optional[str]) -> dict:
+    """Return the delivery config; falls back to ``courier`` if invalid/missing."""
+    if not method or method not in DELIVERY_METHODS:
+        method = "courier"
+    cfg = DELIVERY_METHODS[method]
+    return {
+        "deliveryMethod": method,
+        "deliveryPrice": float(cfg["price"]),
+        "estimatedDeliveryDays": int(cfg["estimatedDeliveryDays"]),
+    }
+
+
+def _resolve_payment(payment: Optional[str]) -> dict:
+    """Return the payment config; falls back to ``card`` if invalid/missing."""
+    if not payment or payment not in PAYMENT_TYPES:
+        payment = "card"
+    cfg = PAYMENT_TYPES[payment]
+    return {
+        "paymentType": payment,
+        "paymentSurcharge": float(cfg["surcharge"]),
+    }
+
+
+def list_options() -> dict:
+    """Expose delivery methods and payment types for the frontend."""
+    return {
+        "deliveryMethods": [
+            {"id": k, "label": v["label"], "price": v["price"], "estimatedDeliveryDays": v["estimatedDeliveryDays"]}
+            for k, v in DELIVERY_METHODS.items()
+        ],
+        "paymentTypes": [
+            {"id": k, "label": v["label"], "surcharge": v["surcharge"]}
+            for k, v in PAYMENT_TYPES.items()
+        ],
+        "statuses": ORDER_STATUSES,
+    }
 
 
 def list_orders(customer_id: Optional[int] = None) -> List[dict]:
@@ -96,13 +176,24 @@ def create_order(data: dict) -> dict:
             "quantity": qty,
         }]
     estimate = _estimate(items)
+    delivery = _resolve_delivery(data.get("deliveryMethod"))
+    payment = _resolve_payment(data.get("paymentType"))
+    total = round(
+        estimate["basePrice"] + delivery["deliveryPrice"] + payment["paymentSurcharge"],
+        2,
+    )
     order = {
         "id": oid,
         "customerId": int(data.get("customerId", 1)),
         "items": items,
+        "estimatedVolumeCm3": estimate["estimatedVolumeCm3"],
+        "estimatedTimeMin": estimate["estimatedTimeMin"],
+        "feasible": estimate["feasible"],
+        "totalPrice": total,
         "status": "Created",
         "createdAt": datetime.utcnow().isoformat(),
-        **estimate,
+        **delivery,
+        **payment,
     }
     ORDERS[oid] = order
     return order

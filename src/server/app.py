@@ -19,8 +19,8 @@ def create_app() -> Flask:
         @app.after_request
         def _add_cors_headers(response):
             response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-User-Role, X-User-Id"
             return response
 
     for blueprint in routes.ALL_BLUEPRINTS:

@@ -153,10 +153,32 @@ def list_orders():
     )
 
 
+@orders_bp.get("/options")
+def order_options():
+    """Return available delivery methods, payment types and statuses."""
+    return jsonify(success=True, **order_mock.list_options())
+
+
 @orders_bp.post("")
 @require_role("Customer")
 def create_order():
-    order = order_mock.create_order(request.get_json(silent=True) or {})
+    data = request.get_json(silent=True) or {}
+    # Validate optional new fields if provided.
+    delivery = data.get("deliveryMethod")
+    if delivery is not None and delivery not in order_mock.DELIVERY_METHODS:
+        return jsonify(
+            success=False,
+            error=f"Unknown deliveryMethod {delivery!r}",
+            allowed=list(order_mock.DELIVERY_METHODS.keys()),
+        ), 400
+    payment = data.get("paymentType")
+    if payment is not None and payment not in order_mock.PAYMENT_TYPES:
+        return jsonify(
+            success=False,
+            error=f"Unknown paymentType {payment!r}",
+            allowed=list(order_mock.PAYMENT_TYPES.keys()),
+        ), 400
+    order = order_mock.create_order(data)
     return jsonify(success=True, order=order), 201
 
 
@@ -223,42 +245,133 @@ def update_shipment_status(sid: int):
 support_bp = Blueprint("support", __name__, url_prefix="/support")
 
 
+def _current_user() -> dict:
+    """Tiny helper: read the mock identity from request headers."""
+    return {
+        "id": (request.headers.get("X-User-Id") or "").strip() or None,
+        "role": (request.headers.get("X-User-Role") or "").strip() or None,
+    }
+
+
 @support_bp.get("/requests")
-@require_role("Support", "Admin")
 def list_requests():
-    return jsonify(requests=support_mock.list_requests())
+    """List support requests.
+
+    - Support/Admin: all requests.
+    - Customer: only their own (filtered by X-User-Id).
+    - Anyone else: 403.
+    """
+    user = _current_user()
+    role = (user.get("role") or "").lower()
+    if role in ("support", "admin"):
+        items = support_mock.list_requests()
+    elif role == "customer":
+        items = support_mock.list_requests(customer_id=user.get("id"))
+    else:
+        return jsonify(success=False, error="forbidden"), 403
+    return jsonify(requests=items, statuses=support_mock.REQUEST_STATUSES)
 
 
 @support_bp.post("/requests")
 @require_role("Customer")
 def create_request():
-    record = support_mock.create_request(request.get_json(silent=True) or {})
+    record = support_mock.create_request(request.get_json(silent=True) or {}, user=_current_user())
     return jsonify(success=True, request=record), 201
 
 
-@support_bp.put("/requests/<int:rid>/status")
+@support_bp.get("/requests/<int:rid>")
+def get_request_detail(rid: int):
+    user = _current_user()
+    role = (user.get("role") or "").lower()
+    record = support_mock.get_request(rid)
+    if record is None:
+        return jsonify(success=False, error="not_found"), 404
+    if role == "customer" and str(record.get("customerId")) != str(user.get("id")):
+        return jsonify(success=False, error="forbidden"), 403
+    if role not in ("support", "admin", "customer"):
+        return jsonify(success=False, error="forbidden"), 403
+    return jsonify(success=True, request=record)
+
+
+@support_bp.patch("/requests/<int:rid>/status")
 @require_role("Support", "Admin")
-def update_request_status(rid: int):
+def patch_request_status(rid: int):
     data = request.get_json(silent=True) or {}
-    result = support_mock.update_request_status(rid, data.get("status", "Resolved"))
+    result = support_mock.update_request_status(
+        rid,
+        data.get("status", ""),
+        comment=data.get("comment", "") or data.get("response", ""),
+        user=_current_user(),
+    )
     if result is None:
         return jsonify(success=False, error="not_found"), 404
+    if isinstance(result, dict) and "error" in result:
+        return jsonify(success=False, **result), 400
     return jsonify(success=True, request=result)
 
 
-@support_bp.get("/complaints")
+# Kept for backwards compatibility with existing frontend code.
+@support_bp.put("/requests/<int:rid>/status")
 @require_role("Support", "Admin")
+def update_request_status(rid: int):
+    return patch_request_status(rid)
+
+
+@support_bp.get("/complaints")
 def list_complaints():
-    return jsonify(complaints=support_mock.list_complaints(), reasons=support_mock.COMPLAINT_REASONS)
+    user = _current_user()
+    role = (user.get("role") or "").lower()
+    if role in ("support", "admin"):
+        items = support_mock.list_complaints()
+    elif role == "customer":
+        items = support_mock.list_complaints(customer_id=user.get("id"))
+    else:
+        return jsonify(success=False, error="forbidden"), 403
+    return jsonify(
+        complaints=items,
+        reasons=support_mock.COMPLAINT_REASONS,
+        statuses=support_mock.COMPLAINT_STATUSES,
+    )
 
 
 @support_bp.post("/complaints")
 @require_role("Customer")
 def create_complaint():
-    result = support_mock.create_complaint(request.get_json(silent=True) or {})
+    result = support_mock.create_complaint(request.get_json(silent=True) or {}, user=_current_user())
     if "error" in result:
         return jsonify(success=False, **result), 400
     return jsonify(success=True, complaint=result), 201
+
+
+@support_bp.get("/complaints/<int:cid>")
+def get_complaint_detail(cid: int):
+    user = _current_user()
+    role = (user.get("role") or "").lower()
+    record = support_mock.get_complaint(cid)
+    if record is None:
+        return jsonify(success=False, error="not_found"), 404
+    if role == "customer" and str(record.get("customerId")) != str(user.get("id")):
+        return jsonify(success=False, error="forbidden"), 403
+    if role not in ("support", "admin", "customer"):
+        return jsonify(success=False, error="forbidden"), 403
+    return jsonify(success=True, complaint=record)
+
+
+@support_bp.patch("/complaints/<int:cid>/status")
+@require_role("Support", "Admin")
+def patch_complaint_status(cid: int):
+    data = request.get_json(silent=True) or {}
+    result = support_mock.update_complaint_status(
+        cid,
+        data.get("status", ""),
+        comment=data.get("comment", "") or data.get("response", ""),
+        user=_current_user(),
+    )
+    if result is None:
+        return jsonify(success=False, error="not_found"), 404
+    if isinstance(result, dict) and "error" in result:
+        return jsonify(success=False, **result), 400
+    return jsonify(success=True, complaint=result)
 
 
 # ---------------------------------------------------------------- suppliers
