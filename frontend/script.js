@@ -1,6 +1,8 @@
 
 
 const API_BASE = "http://127.0.0.1:5000";
+const EXPRESS_SURCHARGE_EUR = 5;
+const FREE_SHIPPING_THRESHOLD_EUR = 60;
 
 let PRODUCTS = [];
 let MATERIALS = [];
@@ -36,6 +38,51 @@ function formatTime(min) {
   const h = Math.floor(safe / 60);
   const m = Math.round(safe % 60);
   return `${h}h ${m}m`;
+}
+
+function normalizeDeliveryType(value) {
+  return String(value || "").trim().toLowerCase() === "express" ? "Express" : "Standard";
+}
+
+function adjustedDelivery(delivery, deliveryType, itemsPrice = 0) {
+  if (!delivery) return null;
+  const type = normalizeDeliveryType(deliveryType);
+  const basePrice = Number(itemsPrice) >= FREE_SHIPPING_THRESHOLD_EUR ? 0 : Number(delivery.price);
+  const baseDays = Number(delivery.estimatedDeliveryDays);
+  return {
+    ...delivery,
+    deliveryType: type,
+    price: type === "Express" ? roundMoney(basePrice + EXPRESS_SURCHARGE_EUR) : basePrice,
+    estimatedDeliveryDays: type === "Express"
+      ? (baseDays > 1 ? baseDays - 1 : 1)
+      : baseDays,
+  };
+}
+
+function roundMoney(value) {
+  return Math.round(Number(value) * 100) / 100;
+}
+
+function formatDeliveryWindow(days) {
+  if (days == null || !Number.isFinite(days)) return "—";
+  return days === 0 ? "Same day (pickup)" : `~${days} day${days === 1 ? "" : "s"}`;
+}
+
+function safeTrackingUrl(raw) {
+  if (!raw) return "";
+  try {
+    const url = new URL(String(raw), window.location.href);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    return url.href;
+  } catch (_) {
+    return "";
+  }
+}
+
+function renderTrackingLink(url, label) {
+  const safeUrl = safeTrackingUrl(url);
+  if (!safeUrl) return "—";
+  return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer noopener" style="color:#ffb347;">${escapeHtml(label || "Track shipment")}</a>`;
 }
 
 function parseQuantity(rawValue) {
@@ -411,8 +458,13 @@ function recalcEstimate() {
   const time = 45 * qty * mult.time;
 
   const deliveryId = document.getElementById("orderDelivery")?.value || "";
+  const deliveryType = document.getElementById("orderDeliveryType")?.value || "Standard";
   const paymentId = document.getElementById("orderPayment")?.value || "";
-  const delivery = DELIVERY_METHODS.find(d => d.id === deliveryId);
+  const delivery = adjustedDelivery(
+    DELIVERY_METHODS.find(d => d.id === deliveryId),
+    deliveryType,
+    itemsPrice,
+  );
   const payment = PAYMENT_TYPES.find(p => p.id === paymentId);
   const deliveryPrice = delivery ? Number(delivery.price) : 0;
   const paySurcharge = payment ? Number(payment.surcharge) : 0;
@@ -420,15 +472,13 @@ function recalcEstimate() {
 
   $("#estItemsPrice").textContent = formatPrice(itemsPrice);
   $("#estDelivery").textContent = delivery
-    ? `${formatPrice(deliveryPrice)} · ${delivery.estimatedDeliveryDays === 0 ? "same day" : delivery.estimatedDeliveryDays + " day(s)"}`
+    ? `${formatPrice(deliveryPrice)} · ${delivery.deliveryType} · ${delivery.estimatedDeliveryDays === 0 ? "same day" : delivery.estimatedDeliveryDays + " day(s)"}`
     : "—";
   $("#estPaySurcharge").textContent = payment ? formatPrice(paySurcharge) : "—";
   $("#estPrice").textContent = formatPrice(total);
   $("#estTime").textContent = formatTime(time);
   const days = delivery ? delivery.estimatedDeliveryDays : null;
-  $("#estDeliveryDays").textContent = days == null
-    ? "—"
-    : (days === 0 ? "Same day (pickup)" : `~${days} day${days === 1 ? "" : "s"}`);
+  $("#estDeliveryDays").textContent = formatDeliveryWindow(days);
 }
 
 function updateOrderFormAvailability() {
@@ -450,7 +500,7 @@ function updateOrderFormAvailability() {
   if (!ok) clearEstimate();
 }
 
-function renderOrderConfirmation(order) {
+function renderOrderConfirmation(order, shipment) {
 
   
   let el = document.getElementById("orderResult");
@@ -475,7 +525,14 @@ function renderOrderConfirmation(order) {
   const dm = DELIVERY_METHODS.find(d => d.id === order.deliveryMethod);
   const pt = PAYMENT_TYPES.find(p => p.id === order.paymentType);
   const days = order.estimatedDeliveryDays;
-  const etaTxt = days == null ? "—" : (days === 0 ? "Same day (pickup)" : `~${days} day${days === 1 ? "" : "s"}`);
+  const etaTxt = formatDeliveryWindow(days);
+  const deliveryType = escapeHtml(order.deliveryType ?? shipment?.deliveryType ?? "Standard");
+  const trackingNumber = shipment?.trackingNumber
+    ? escapeHtml(shipment.trackingNumber)
+    : "—";
+  const trackingLink = shipment?.trackingUrl
+    ? renderTrackingLink(shipment.trackingUrl, shipment.trackingNumber || "Track shipment")
+    : "—";
   el.innerHTML = `
     <div style="font-size:1.05rem;margin-bottom:6px;">✅ <strong>Order #${order.id}</strong> created — status: <strong>${order.status || "Created"}</strong></div>
     <ul style="list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 18px;">
@@ -485,8 +542,11 @@ function renderOrderConfirmation(order) {
       <li><span style="opacity:.7;">Print quality:</span> ${escapeHtml(item.precision ?? "—")}</li>
       <li><span style="opacity:.7;">Print time:</span> ${formatTime(order.estimatedTimeMin)}</li>
       <li><span style="opacity:.7;">Delivery:</span> ${escapeHtml(dm?.label ?? order.deliveryMethod ?? "—")} (${formatPrice(order.deliveryPrice ?? 0)})</li>
+      <li><span style="opacity:.7;">Delivery type:</span> ${deliveryType}</li>
       <li><span style="opacity:.7;">Estimated delivery:</span> ${etaTxt}</li>
       <li><span style="opacity:.7;">Payment:</span> ${escapeHtml(pt?.label ?? order.paymentType ?? "—")}${order.paymentSurcharge ? " (+" + formatPrice(order.paymentSurcharge) + ")" : ""}</li>
+      <li><span style="opacity:.7;">Tracking number:</span> ${trackingNumber}</li>
+      <li><span style="opacity:.7;">Tracking link:</span> ${trackingLink}</li>
       <li><span style="opacity:.7;">Total price:</span> <strong>${formatPrice(order.totalPrice)}</strong></li>
     </ul>
   `;
@@ -509,7 +569,7 @@ function setOrderResult(message, isError) {
 }
 
 function setupOrderForm() {
-  ["orderModel", "orderMaterial", "orderQuality", "orderQty", "orderDelivery", "orderPayment"].forEach(id => {
+  ["orderModel", "orderMaterial", "orderQuality", "orderQty", "orderDelivery", "orderDeliveryType", "orderPayment"].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener("change", recalcEstimate);
@@ -626,12 +686,12 @@ function setupOrderForm() {
     }
 
     const order = (data && data.order) || {};
-    renderOrderConfirmation(order);
+    const ship = data && data.shipment;
+    renderOrderConfirmation(order, ship);
     if (order.totalPrice != null) $("#estPrice").textContent = formatPrice(order.totalPrice);
     if (order.estimatedTimeMin != null) $("#estTime").textContent = formatTime(order.estimatedTimeMin);
 
     const shipEl = document.getElementById("orderShipmentResult");
-    const ship = data && data.shipment;
     if (shipEl) {
       if (ship) {
         const a = ship.address || {};
@@ -642,6 +702,7 @@ function setupOrderForm() {
           "<p><strong>Delivery type:</strong> " + (ship.deliveryType || "") + "</p>" +
           "<p><strong>Delivery price:</strong> " + (ship.price != null ? formatPrice(ship.price) : "—") + "</p>" +
           "<p><strong>Tracking number:</strong> " + (ship.trackingNumber || "") + "</p>" +
+          "<p><strong>Tracking link:</strong> " + renderTrackingLink(ship.trackingUrl, ship.trackingNumber || "Track shipment") + "</p>" +
           "<p><strong>Status:</strong> " + (ship.status || "") + "</p>" +
           "<p><strong>Address:</strong> " + [a.fullName, a.street, a.city, a.postalCode, a.country, a.phone].filter(Boolean).join(", ") + "</p>";
         shipEl.classList.remove("hidden");
@@ -944,24 +1005,23 @@ function renderOrderRows(targetId, orders) {
     ul.innerHTML = `<li class="muted">No orders.</li>`;
     return;
   }
-  const badgeFor = (s) => {
-    if (s === "Delivered") return "available";
-    if (s === "Created" || s === "Paid") return "expected";
-    return "low";
-  };
   ul.innerHTML = orders.map(o => {
     const dm = DELIVERY_METHODS.find(d => d.id === o.deliveryMethod);
     const pt = PAYMENT_TYPES.find(p => p.id === o.paymentType);
     const dmLabel = dm ? dm.label : (o.deliveryMethod || "—");
     const ptLabel = pt ? pt.label : (o.paymentType || "—");
+    const deliveryType = o.deliveryType ? ` · ${escapeHtml(o.deliveryType)}` : "";
+    const tracking = o.shipment?.trackingUrl
+      ? ` · ${renderTrackingLink(o.shipment.trackingUrl, o.shipment.trackingNumber || "Track shipment")}`
+      : "";
     return `
     <li class="inventory-item">
       <div>
         <div class="name">Order #${o.id} — ${o.status}</div>
         <div class="sub">customer #${o.customerId} · ${formatPrice(o.totalPrice)} · ${formatTime(o.estimatedTimeMin)}</div>
-        <div class="sub">${dmLabel} · ${ptLabel}</div>
+        <div class="sub">${dmLabel}${deliveryType} · ${ptLabel}${tracking}</div>
       </div>
-      <span class="badge ${badgeFor(o.status)}">${o.status}</span>
+      <span class="badge ${orderBadgeClass(o.status)}">${o.status}</span>
     </li>`;
   }).join("");
 }
@@ -981,6 +1041,8 @@ async function loadMyOrders() {
 
 let SUPPORT_REQUEST_STATUSES = [];
 let SUPPORT_COMPLAINT_STATUSES = [];
+let SUPPORT_ORDER_STATUSES = [];
+let SUPPORT_SHIPMENT_STATUSES = [];
 
 let SUPPORT_DETAIL_OPEN = null;
 
@@ -995,6 +1057,47 @@ function setSupportDetailMsg(message, isError) {
   if (!el) return;
   el.textContent = message || "";
   el.style.color = isError ? "#ffb4b4" : "#b4ffc1";
+}
+
+function orderBadgeClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "doručená") return "available";
+  if (value === "zrušená" || value === "pozastavená" || value.includes("čaká")) return "low";
+  return "expected";
+}
+
+function shipmentBadgeClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "doručená") return "available";
+  if (value === "problém" || value === "nedoručená") return "low";
+  return "expected";
+}
+
+function workflowStatusOptions(current, allowedNext) {
+  const out = [];
+  const seen = new Set();
+  [current, ...(Array.isArray(allowedNext) ? allowedNext : [])].forEach(status => {
+    const key = String(status || "").trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(key);
+  });
+  return out;
+}
+
+function setSupportWorkflowMsg(message, isError) {
+  const el = document.getElementById("supportWorkflowMsg");
+  if (!el) return;
+  el.textContent = message || "";
+  el.style.color = isError ? "#ffb4b4" : "#b4ffc1";
+}
+
+function renderAllowedNextPills(statuses) {
+  const items = Array.isArray(statuses) ? statuses : [];
+  if (items.length === 0) return `<span class="muted">No further transitions</span>`;
+  return items.map(status =>
+    `<span class="support-next-pill">${escapeHtml(status)}</span>`
+  ).join("");
 }
 
 function renderSupportDetail(kind, record) {
@@ -1089,9 +1192,179 @@ function setupSupportDetail() {
   if (updBtn) updBtn.addEventListener("click", submitSupportDetailUpdate);
 }
 
+function renderSupportOrderWorkflow(orders) {
+  const el = document.getElementById("supportOrderList");
+  if (!el) return;
+  if (!orders || orders.length === 0) {
+    el.innerHTML = `<li class="muted">No orders to manage.</li>`;
+    return;
+  }
+  el.innerHTML = orders.map(order => {
+    const options = workflowStatusOptions(order.status, order.allowedNextStatuses);
+    const disabled = options.length <= 1 ? "disabled" : "";
+    const optionHtml = options.map(status =>
+      `<option value="${escapeHtml(status)}"${status === order.status ? " selected" : ""}>${escapeHtml(status)}</option>`
+    ).join("");
+    return `
+      <li class="support-workflow-card">
+        <div class="support-workflow-head">
+          <div>
+            <div class="support-workflow-title">Order #${order.id}</div>
+          </div>
+          <span class="badge ${orderBadgeClass(order.status)}">${escapeHtml(order.status)}</span>
+        </div>
+        <div class="support-workflow-meta">
+          <div class="support-workflow-stats">
+            <span class="support-stat"><strong>Total</strong> ${formatPrice(order.totalPrice)}</span>
+            <span class="support-stat"><strong>Print time</strong> ${formatTime(order.estimatedTimeMin)}</span>
+            <span class="support-stat"><strong>Customer</strong> #${escapeHtml(order.customerId ?? "—")}</span>
+          </div>
+          <div class="support-workflow-info">
+            <div class="support-info-line"><strong>Delivery:</strong> ${escapeHtml(order.deliveryMethod ?? "—")} · ${escapeHtml(order.deliveryType ?? "—")}</div>
+            <div class="support-info-line"><strong>Current step:</strong> ${escapeHtml(order.status)}</div>
+          </div>
+        </div>
+        <div>
+          <div class="support-info-line"><strong>Allowed next:</strong></div>
+          <div class="support-workflow-next">${renderAllowedNextPills(order.allowedNextStatuses)}</div>
+        </div>
+        <div class="support-workflow-footer">
+          <label>
+            Next status
+            <select data-support-order-select="${order.id}">${optionHtml}</select>
+          </label>
+          <button type="button" class="btn-ghost small" data-support-order-update="${order.id}" ${disabled}>Update</button>
+        </div>
+      </li>`;
+  }).join("");
+  $$(`#supportOrderList button[data-support-order-update]`).forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = Number(btn.dataset.supportOrderUpdate);
+      const sel = document.querySelector(`select[data-support-order-select="${id}"]`);
+      updateSupportOrderStatus(id, sel?.value || "");
+    });
+  });
+}
+
+function renderSupportShipmentWorkflow(orders) {
+  const el = document.getElementById("supportShipmentList");
+  if (!el) return;
+  const shipments = (orders || [])
+    .filter(order => order.shipment)
+    .map(order => ({ ...order.shipment, orderStatus: order.status, orderId: order.id }));
+  if (shipments.length === 0) {
+    el.innerHTML = `<li class="muted">No shipments to manage yet.</li>`;
+    return;
+  }
+  el.innerHTML = shipments.map(shipment => {
+    const options = workflowStatusOptions(shipment.status, shipment.allowedNextStatuses);
+    const disabled = options.length <= 1 ? "disabled" : "";
+    const optionHtml = options.map(status =>
+      `<option value="${escapeHtml(status)}"${status === shipment.status ? " selected" : ""}>${escapeHtml(status)}</option>`
+    ).join("");
+    return `
+      <li class="support-workflow-card">
+        <div class="support-workflow-head">
+          <div>
+            <div class="support-workflow-title">Shipment #${shipment.id}</div>
+          </div>
+          <span class="badge ${shipmentBadgeClass(shipment.status)}">${escapeHtml(shipment.status)}</span>
+        </div>
+        <div class="support-workflow-meta">
+          <div class="support-workflow-stats">
+            <span class="support-stat"><strong>Order</strong> #${escapeHtml(shipment.orderId ?? "—")}</span>
+            <span class="support-stat"><strong>Carrier</strong> ${escapeHtml(shipment.carrier ?? "—")}</span>
+            <span class="support-stat"><strong>Type</strong> ${escapeHtml(shipment.deliveryType ?? "—")}</span>
+          </div>
+          <div class="support-workflow-info">
+            <div class="support-info-line"><strong>Tracking:</strong> ${renderTrackingLink(shipment.trackingUrl, shipment.trackingNumber || "Track shipment")}</div>
+            <div class="support-info-line"><strong>Order status:</strong> ${escapeHtml(shipment.orderStatus ?? "—")}</div>
+          </div>
+        </div>
+        <div>
+          <div class="support-info-line"><strong>Allowed next:</strong></div>
+          <div class="support-workflow-next">${renderAllowedNextPills(shipment.allowedNextStatuses)}</div>
+        </div>
+        <div class="support-workflow-footer">
+          <label>
+            Next status
+            <select data-support-shipment-select="${shipment.id}">${optionHtml}</select>
+          </label>
+          <button type="button" class="btn-ghost small" data-support-shipment-update="${shipment.id}" ${disabled}>Update</button>
+        </div>
+      </li>`;
+  }).join("");
+  $$(`#supportShipmentList button[data-support-shipment-update]`).forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = Number(btn.dataset.supportShipmentUpdate);
+      const sel = document.querySelector(`select[data-support-shipment-select="${id}"]`);
+      updateSupportShipmentStatus(id, sel?.value || "");
+    });
+  });
+}
+
+async function updateSupportOrderStatus(orderId, status) {
+  if (!orderId || !status) return;
+  let res, data;
+  try {
+    ({ res, data } = await apiSend("PUT", `/orders/${orderId}/status`, { status }));
+  } catch (err) {
+    console.error("Failed to update order status:", err);
+    setSupportWorkflowMsg("❌ " + BACKEND_DOWN_MESSAGE, true);
+    return;
+  }
+  if (res.status === 403) {
+    setSupportWorkflowMsg("❌ " + FORBIDDEN_MESSAGE, true);
+    return;
+  }
+  if (!res.ok) {
+    setSupportWorkflowMsg("❌ " + ((data && (data.message || data.error)) || ("HTTP " + res.status)), true);
+    return;
+  }
+  setSupportWorkflowMsg(`✅ Order #${orderId} updated to ${status}.`, false);
+  await loadSupportDashboard();
+}
+
+async function updateSupportShipmentStatus(shipmentId, status) {
+  if (!shipmentId || !status) return;
+  let res, data;
+  try {
+    ({ res, data } = await apiSend("PUT", `/delivery/shipments/${shipmentId}/status`, { status }));
+  } catch (err) {
+    console.error("Failed to update shipment status:", err);
+    setSupportWorkflowMsg("❌ " + BACKEND_DOWN_MESSAGE, true);
+    return;
+  }
+  if (res.status === 403) {
+    setSupportWorkflowMsg("❌ " + FORBIDDEN_MESSAGE, true);
+    return;
+  }
+  if (!res.ok) {
+    setSupportWorkflowMsg("❌ " + ((data && (data.message || data.error)) || ("HTTP " + res.status)), true);
+    return;
+  }
+  setSupportWorkflowMsg(`✅ Shipment #${shipmentId} updated to ${status}.`, false);
+  await loadSupportDashboard();
+}
+
 async function loadSupportDashboard() {
   const u = getCurrentUser();
   if (!u || u.role !== "Support") return;
+  try {
+    const data = await apiGet("/orders", { auth: true });
+    SUPPORT_ORDER_STATUSES = Array.isArray(data.statuses) ? data.statuses : SUPPORT_ORDER_STATUSES;
+    SUPPORT_SHIPMENT_STATUSES = Array.isArray(data.shipmentStatuses) ? data.shipmentStatuses : SUPPORT_SHIPMENT_STATUSES;
+    const orders = Array.isArray(data.orders) ? data.orders : [];
+    renderSupportOrderWorkflow(orders);
+    renderSupportShipmentWorkflow(orders);
+  } catch (err) {
+    console.error("Failed to load support workflows:", err);
+    const msg = err.forbidden ? FORBIDDEN_MESSAGE : BACKEND_DOWN_MESSAGE;
+    const orderEl = document.getElementById("supportOrderList");
+    const shipEl = document.getElementById("supportShipmentList");
+    if (orderEl) orderEl.innerHTML = `<li class="muted">${msg}</li>`;
+    if (shipEl) shipEl.innerHTML = `<li class="muted">${msg}</li>`;
+  }
   // Requests
   try {
     const data = await apiGet("/support/requests", { auth: true });
@@ -1430,8 +1703,10 @@ function setupShipmentForm() {
         <ul style="list-style:none;padding:0;margin:0;">
           <li><strong>Shipment ID:</strong> ${escapeHtml(String(s.id ?? "—"))}</li>
           <li><strong>Carrier:</strong> ${escapeHtml(s.carrier ?? "—")}</li>
+          <li><strong>Delivery type:</strong> ${escapeHtml(s.deliveryType ?? "—")}</li>
           <li><strong>Delivery price:</strong> ${formatPrice(s.price ?? 0)}</li>
           <li><strong>Tracking number:</strong> ${escapeHtml(s.trackingNumber ?? "—")}</li>
+          <li><strong>Tracking link:</strong> ${renderTrackingLink(s.trackingUrl, s.trackingNumber || "Track shipment")}</li>
           <li><strong>Status:</strong> ${escapeHtml(s.status ?? "—")}</li>
         </ul>`;
     }

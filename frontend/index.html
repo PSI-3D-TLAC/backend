@@ -189,7 +189,7 @@
             <label>Delivery type
               <select id="orderDeliveryType" required>
                 <option value="Standard">Standard</option>
-                <option value="Express">Express</option>
+                <option value="Express">Express (+€5)</option>
               </select>
             </label>
           </div>
@@ -363,7 +363,7 @@
           <label>Delivery type
             <select id="shipDeliveryType">
               <option value="Standard">Standard</option>
-              <option value="Express">Express</option>
+              <option value="Express">Express (+€5)</option>
               <option value="Pickup">Pickup</option>
             </select>
           </label>
@@ -417,8 +417,13 @@
     <section id="supportStaff" class="section role-section" data-role="Support">
       <div class="section-head">
         <h2>Support Dashboard</h2>
-        <p class="muted">View customer requests and complaints.</p>
+        <p class="muted">Manage UC order and shipment statuses, then handle customer requests and complaints.</p>
       </div>
+      <h3>Order Statuses</h3>
+      <ul class="inventory-list support-workflow-list" id="supportOrderList"></ul>
+      <h3>Shipment Statuses</h3>
+      <ul class="inventory-list support-workflow-list" id="supportShipmentList"></ul>
+      <p id="supportWorkflowMsg" class="muted"></p>
       <h3>Requests</h3>
       <ul class="inventory-list" id="supportReqList"></ul>
       <h3>Complaints</h3>
