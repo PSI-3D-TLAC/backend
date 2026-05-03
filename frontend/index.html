@@ -320,6 +320,61 @@
       </form>
     </section>
 
+    <!-- ============================ DELIVERY / SHIPMENT (Customer) ============================ -->
+    <section id="shipmentSection" class="section role-section" data-role="Customer">
+      <div class="section-head">
+        <h2>Create Shipment</h2>
+        <p class="muted">Fill in your delivery address and choose a carrier.</p>
+      </div>
+      <form id="shipmentForm" class="support-form card">
+        <div class="form-row">
+          <label>Order ID
+            <input type="number" id="shipOrderId" min="1" required />
+          </label>
+          <label>Carrier
+            <select id="shipCarrier" required></select>
+          </label>
+          <label>Delivery type
+            <select id="shipDeliveryType">
+              <option value="Standard">Standard</option>
+              <option value="Express">Express</option>
+              <option value="Pickup">Pickup</option>
+            </select>
+          </label>
+        </div>
+        <h4>Delivery address</h4>
+        <div class="form-row">
+          <label>Full name
+            <input type="text" id="shipFullName" required />
+          </label>
+          <label>Phone number
+            <input type="text" id="shipPhone" required />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Street
+            <input type="text" id="shipStreet" required />
+          </label>
+          <label>City
+            <input type="text" id="shipCity" required />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Postal code
+            <input type="text" id="shipPostalCode" required />
+          </label>
+          <label>Country
+            <input type="text" id="shipCountry" required value="Slovakia" />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Create Shipment</button>
+        </div>
+        <p id="shipmentStatus" class="muted"></p>
+        <div id="shipmentResult" class="card hidden" style="margin-top:12px;padding:12px;"></div>
+      </form>
+    </section>
+
     <!-- ============================ MY SUPPORT (Customer) ============================ -->
     <section id="mySupport" class="section role-section" data-role="Customer">
       <div class="section-head">
@@ -384,20 +439,31 @@
       </div>
       <form id="supplierForm" class="support-form card">
         <div class="form-row">
-          <label>Name
-            <input type="text" id="supplierName" required />
+          <label>Company name
+            <input type="text" id="supplierCompanyName" required />
+          </label>
+          <label>Contact person
+            <input type="text" id="supplierContactPerson" required />
+          </label>
+          <label>Email
+            <input type="email" id="supplierEmail" required />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Phone
+            <input type="text" id="supplierPhone" required />
           </label>
           <label>Address
-            <input type="text" id="supplierAddress" />
+            <input type="text" id="supplierAddress" required />
           </label>
-          <label>Contact
-            <input type="text" id="supplierContact" />
+          <label>External catalog link (optional)
+            <input type="text" id="supplierCatalogLink" placeholder="https://..." />
           </label>
         </div>
         <div class="form-actions">
           <button type="submit" class="btn-primary">Register Supplier</button>
         </div>
-        <p id="supplierStatus" class="muted"></p>
+        <div id="supplierStatus" class="muted"></div>
       </form>
 
       <form id="importForm" class="support-form card">

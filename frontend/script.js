@@ -711,15 +711,18 @@ function setupSupplierForm() {
     e.preventDefault();
     const status = document.getElementById("supplierStatus");
     const payload = {
-      name: document.getElementById("supplierName").value.trim(),
+      companyName: document.getElementById("supplierCompanyName").value.trim(),
+      contactPerson: document.getElementById("supplierContactPerson").value.trim(),
+      email: document.getElementById("supplierEmail").value.trim(),
+      phone: document.getElementById("supplierPhone").value.trim(),
       address: document.getElementById("supplierAddress").value.trim(),
-      contact: document.getElementById("supplierContact").value.trim(),
+      externalCatalogLink: document.getElementById("supplierCatalogLink").value.trim(),
     };
     let res, data;
     try {
-      ({ res, data } = await apiSend("POST", "/suppliers", payload));
+      ({ res, data } = await apiSend("POST", "/suppliers/register", payload));
     } catch (err) {
-      console.error("Failed to POST /suppliers:", err);
+      console.error("Failed to POST /suppliers/register:", err);
       status.textContent = "❌ " + BACKEND_DOWN_MESSAGE;
       return;
     }
@@ -728,17 +731,26 @@ function setupSupplierForm() {
       status.textContent = "❌ " + ((data && (data.message || data.error)) || ("HTTP " + res.status));
       return;
     }
-    const sid = data.supplierId ?? data.supplier?.id;
-    const sname = data.supplier?.name ?? payload.name;
-    const sstatus = data.registrationStatus ?? "registered";
+    const s = data.supplier || {};
+    const creds = data.credentials || {};
+    const imported = Array.isArray(data.importedProducts) ? data.importedProducts : [];
+    let importHtml = "";
+    if (data.importStatus === "ok" && imported.length) {
+      importHtml = `<div><strong>Imported products (${imported.length}):</strong><ul>` +
+        imported.map(p => `<li>${p.name} — €${Number(p.price).toFixed(2)} <span class="muted">(supplier #${p.supplierId})</span></li>`).join("") +
+        `</ul></div>`;
+    } else if (data.importStatus === "failed") {
+      importHtml = `<div>⚠ Import failed: ${data.importMessage || data.importError || "unknown error"}</div>`;
+    } else if (data.importStatus === "skipped") {
+      importHtml = `<div class="muted">No external catalog link provided — products not imported.</div>`;
+    }
     status.innerHTML =
-      `✅ Supplier registered successfully.<br>` +
-      `<strong>ID:</strong> #${sid} &nbsp; <strong>Name:</strong> ${sname} &nbsp; ` +
-      `<strong>Status:</strong> ${sstatus}<br>` +
-      `<span class="muted">Login: ${data.supplier?.username} / ${data.supplier?.password}. ` +
-      `Use ID #${sid} to import products.</span>`;
+      `✅ ${data.message || "Supplier registered."}<br>` +
+      `<strong>ID:</strong> #${s.id} &nbsp; <strong>Company:</strong> ${s.companyName} &nbsp; <strong>Email:</strong> ${s.email}<br>` +
+      `<strong>Credentials:</strong> ${creds.username} / ${creds.password}` +
+      importHtml;
     const importInput = document.getElementById("importSupplierId");
-    if (importInput) importInput.value = String(sid);
+    if (importInput) importInput.value = String(s.id ?? "");
     form.reset();
     loadSuppliersList();
   });
@@ -786,18 +798,34 @@ async function loadSuppliersList() {
   try {
     const data = await apiGet("/suppliers");
     const items = Array.isArray(data.suppliers) ? data.suppliers : [];
-    ul.innerHTML = items.map(s => `
+    ul.innerHTML = items.map(s => {
+      const name = s.companyName ?? s.name ?? "";
+      const email = s.email ?? s.contact ?? "";
+      return `
       <li class="inventory-item">
         <div>
-          <div class="name">#${s.id} ${s.name ?? ""}</div>
-          <div class="sub">${s.contact ?? ""}${s.address ? " · " + s.address : ""}</div>
+          <div class="name">#${s.id} ${name}</div>
+          <div class="sub">${email}${s.address ? " · " + s.address : ""}</div>
         </div>
-        <span class="badge available">${(s.products || []).length} products</span>
-      </li>`).join("") || `<li class="muted">No suppliers yet.</li>`;
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="badge available">${(s.products || []).length} products</span>
+          <button type="button" class="btn-secondary" data-import-sid="${s.id}">Import Products</button>
+        </div>
+      </li>`;
+    }).join("") || `<li class="muted">No suppliers yet.</li>`;
+    ul.querySelectorAll("button[data-import-sid]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const sid = btn.getAttribute("data-import-sid");
+        const importInput = document.getElementById("importSupplierId");
+        if (importInput) importInput.value = sid;
+        const importForm = document.getElementById("importForm");
+        if (importForm) importForm.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
     const dl = document.getElementById("supplierIdOptions");
     if (dl) {
       dl.innerHTML = items
-        .map(s => `<option value="${s.id}">${s.name ?? ""}</option>`)
+        .map(s => `<option value="${s.id}">${s.companyName ?? s.name ?? ""}</option>`)
         .join("");
     }
   } catch (err) {
@@ -1299,15 +1327,97 @@ async function loadOrders() {
   }
 }
 
+let SHIPMENT_CARRIERS = [];
+
 async function loadDeliveryOptions() {
   try {
     const data = await apiGet("/delivery/options");
-    console.info("Loaded delivery options:", data.options?.length ?? 0);
+    SHIPMENT_CARRIERS = Array.isArray(data.carriers) ? data.carriers : [];
+    populateShipmentCarrierSelect();
     return true;
   } catch (err) {
     console.error("Failed to load /delivery/options:", err);
+    SHIPMENT_CARRIERS = [];
     return false;
   }
+}
+
+function populateShipmentCarrierSelect() {
+  const sel = document.getElementById("shipCarrier");
+  if (!sel) return;
+  sel.innerHTML = "";
+  SHIPMENT_CARRIERS.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    const days = c.estimatedDays === 0 ? "same day"
+      : `${c.estimatedDays} day${c.estimatedDays === 1 ? "" : "s"}`;
+    opt.textContent = `${c.name} — ${formatPrice(c.price)} · ${days}`;
+    sel.appendChild(opt);
+  });
+}
+
+function setShipmentStatus(msg, isError) {
+  const el = document.getElementById("shipmentStatus");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = isError ? "#ffb4b4" : "";
+}
+
+function setupShipmentForm() {
+  const form = document.getElementById("shipmentForm");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setShipmentStatus("");
+    const result = document.getElementById("shipmentResult");
+    if (result) { result.classList.add("hidden"); result.innerHTML = ""; }
+
+    const address = {
+      fullName: document.getElementById("shipFullName").value.trim(),
+      street: document.getElementById("shipStreet").value.trim(),
+      city: document.getElementById("shipCity").value.trim(),
+      postalCode: document.getElementById("shipPostalCode").value.trim(),
+      country: document.getElementById("shipCountry").value.trim(),
+      phone: document.getElementById("shipPhone").value.trim(),
+    };
+    const missing = Object.entries(address).filter(([, v]) => !v).map(([k]) => k);
+    if (missing.length) {
+      setShipmentStatus(`Please fill in all address fields: ${missing.join(", ")}`, true);
+      return;
+    }
+    const carrier = document.getElementById("shipCarrier").value;
+    if (!carrier) { setShipmentStatus("Please choose a carrier.", true); return; }
+    const orderIdRaw = document.getElementById("shipOrderId").value;
+    const orderId = orderIdRaw ? Number(orderIdRaw) : null;
+    if (!orderId) { setShipmentStatus("Please enter the Order ID.", true); return; }
+
+    const payload = {
+      orderId,
+      carrier,
+      deliveryType: document.getElementById("shipDeliveryType").value || "Standard",
+      address,
+    };
+    const { res, data } = await apiSend("POST", "/delivery/shipments", payload);
+    if (!res.ok || !data || data.success === false) {
+      const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
+      setShipmentStatus(`Shipment failed: ${msg}`, true);
+      return;
+    }
+    const s = data.shipment || {};
+    setShipmentStatus("Shipment created.", false);
+    if (result) {
+      result.classList.remove("hidden");
+      result.innerHTML = `
+        <h4 style="margin:0 0 8px 0;">Shipment created</h4>
+        <ul style="list-style:none;padding:0;margin:0;">
+          <li><strong>Shipment ID:</strong> ${escapeHtml(String(s.id ?? "—"))}</li>
+          <li><strong>Carrier:</strong> ${escapeHtml(s.carrier ?? "—")}</li>
+          <li><strong>Delivery price:</strong> ${formatPrice(s.price ?? 0)}</li>
+          <li><strong>Tracking number:</strong> ${escapeHtml(s.trackingNumber ?? "—")}</li>
+          <li><strong>Status:</strong> ${escapeHtml(s.status ?? "—")}</li>
+        </ul>`;
+    }
+  });
 }
 
 async function loadUsers() {
@@ -1332,6 +1442,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupImportForm();
   setupSupportDetail();
   setupAdminProductForm();
+  setupShipmentForm();
   setupLoginUI();
   setupCategoryButtons();
   setupNavLinks();

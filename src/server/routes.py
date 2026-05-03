@@ -205,8 +205,10 @@ def delivery_options():
 @delivery_bp.post("/shipments")
 @require_role("Customer", "Manager", "Admin")
 def create_shipment():
-    shipment = delivery_mock.create_shipment(request.get_json(silent=True) or {})
-    return jsonify(success=True, shipment=shipment), 201
+    result = delivery_mock.create_shipment(request.get_json(silent=True) or {})
+    if isinstance(result, dict) and "error" in result:
+        return jsonify(success=False, **result), 400
+    return jsonify(success=True, shipment=result), 201
 
 
 @delivery_bp.put("/shipments/<int:sid>/status")
@@ -367,6 +369,34 @@ def register_supplier():
         registrationStatus=result.get("registrationStatus", "registered"),
         message=f"Supplier '{result['name']}' registered with ID #{result['id']}.",
     ), 201
+
+
+@suppliers_bp.post("/register")
+@require_role("Manager", "Admin")
+def register_supplier_full():
+    result = supplier_mock.register_supplier_full(request.get_json(silent=True) or {})
+    if not result.get("success"):
+        return jsonify(result), 400
+    payload = {
+        "success": True,
+        "supplier": result["supplier"],
+        "credentials": result["credentials"],
+        "importedProducts": result.get("importedProducts", []),
+        "importStatus": result.get("importStatus", "skipped"),
+    }
+    if result.get("importStatus") == "failed":
+        payload["importMessage"] = result.get("importMessage")
+        payload["importError"] = result.get("importError")
+        payload["message"] = (
+            f"Supplier #{result['supplier']['id']} created, "
+            f"but product import failed: {result.get('importMessage')}"
+        )
+    else:
+        payload["message"] = (
+            f"Supplier '{result['supplier']['companyName']}' "
+            f"registered with ID #{result['supplier']['id']}."
+        )
+    return jsonify(payload), 201
 
 
 @suppliers_bp.post("/import-products")
