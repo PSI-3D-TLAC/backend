@@ -44,6 +44,61 @@ def require_role(*allowed: str):
 
     return decorator
 
+def _serialize_shipment(shipment: dict | None) -> dict | None:
+    if shipment is None:
+        return None
+    payload = dict(shipment)
+    payload["status"] = delivery_mock.normalize_status(payload.get("status"))
+    payload["allowedNextStatuses"] = delivery_mock.allowed_next_statuses(payload.get("status"))
+    return payload
+
+def _serialize_order(order: dict | None) -> dict | None:
+    if order is None:
+        return None
+    payload = dict(order)
+    payload["status"] = order_mock.normalize_status(payload.get("status"))
+    payload["allowedNextStatuses"] = order_mock.allowed_next_statuses(payload.get("status"))
+    shipment = delivery_mock.get_shipment_by_order_id(order.get("id"))
+    if shipment is not None:
+        payload["shipment"] = _serialize_shipment(shipment)
+    return payload
+
+def _shipment_target_for_order_status(order_status: str) -> str | None:
+    mapping = {
+        "Pripravená na odoslanie": "Neodoslaná",
+        "Odoslaná": "Odoslaná",
+        "Doručená": "Doručená",
+    }
+    return mapping.get(order_status)
+
+def _ensure_shipment_for_order(order: dict) -> dict | None:
+    desired_status = _shipment_target_for_order_status(order.get("status"))
+    if desired_status is None:
+        return delivery_mock.get_shipment_by_order_id(order.get("id"))
+
+    shipment = delivery_mock.get_shipment_by_order_id(order.get("id"))
+    if shipment is None:
+        address = order.get("deliveryAddress")
+        if not isinstance(address, dict):
+            return {
+                "error": "missing_delivery_address",
+                "message": "Shipment cannot be created because the order has no delivery address.",
+            }
+        shipment = delivery_mock.create_shipment({
+            "orderId": order.get("id"),
+            "carrier": order.get("deliveryMethod"),
+            "deliveryType": order.get("deliveryType"),
+            "address": address,
+            "priceOverride": order.get("deliveryPrice"),
+            "estimatedDaysOverride": order.get("estimatedDeliveryDays"),
+        })
+        if isinstance(shipment, dict) and shipment.get("error"):
+            return shipment
+
+    if desired_status != shipment.get("status"):
+        shipment = delivery_mock.update_shipment_status(shipment["id"], desired_status)
+    return shipment
+
 health_bp = Blueprint("health", __name__)
 
 @health_bp.get("/health")
@@ -120,8 +175,9 @@ orders_bp = Blueprint("orders", __name__, url_prefix="/orders")
 def list_orders():
     customer = request.args.get("customerId", type=int)
     return jsonify(
-        orders=UC07_order_processing.list_orders(customer_id=customer),
+        orders=[_serialize_order(o) for o in UC07_order_processing.list_orders(customer_id=customer)],
         statuses=UC07_order_processing.list_statuses(),
+        shipmentStatuses=delivery_mock.SHIPMENT_STATUSES,
     )
 
 @orders_bp.get("/options")
@@ -157,15 +213,7 @@ def create_order():
         if not data.get("deliveryMethod"):
             data["deliveryMethod"] = delivery.get("carrier")
     order = UC02_create_order.create(data)
-    response = {"success": True, "order": order}
-    if isinstance(delivery, dict):
-        shipment = delivery_mock.create_shipment({
-            "orderId": order.get("id"),
-            "carrier": delivery.get("carrier"),
-            "deliveryType": delivery.get("deliveryType"),
-            "address": delivery.get("address"),
-        })
-        response["shipment"] = shipment
+    response = {"success": True, "order": _serialize_order(order)}
     return jsonify(**response), 201
 
 @orders_bp.get("/<int:oid>")
@@ -173,18 +221,28 @@ def get_order(oid: int):
     order = UC07_order_processing.get_order(oid)
     if order is None:
         return jsonify(success=False, error="not_found"), 404
-    return jsonify(success=True, order=order)
+    return jsonify(success=True, order=_serialize_order(order))
 
 @orders_bp.put("/<int:oid>/status")
 @require_role("Support", "Manager", "Admin")
 def update_order_status(oid: int):
     data = request.get_json(silent=True) or {}
+    current = UC07_order_processing.get_order(oid)
+    previous_status = current.get("status") if current else None
     result = UC07_order_processing.update_status(oid, data.get("status", ""))
     if result is None:
         return jsonify(success=False, error="not_found"), 404
     if "error" in result:
         return jsonify(success=False, **result), 400
-    return jsonify(success=True, order=result)
+    shipment = _ensure_shipment_for_order(result)
+    if isinstance(shipment, dict) and shipment.get("error"):
+        if previous_status is not None:
+            result["status"] = previous_status
+        return jsonify(success=False, **shipment), 400
+    response = {"success": True, "order": _serialize_order(result)}
+    if shipment is not None:
+        response["shipment"] = _serialize_shipment(shipment)
+    return jsonify(**response)
 
 payments_bp = Blueprint("payments", __name__, url_prefix="/payments")
 
@@ -204,12 +262,27 @@ def delivery_options():
 @delivery_bp.post("/shipments")
 @require_role("Customer", "Manager", "Admin")
 def create_shipment():
-    result = delivery_mock.create_shipment(request.get_json(silent=True) or {})
+    payload = request.get_json(silent=True) or {}
+    order_id = payload.get("orderId")
+    if order_id is not None:
+        try:
+            order = UC07_order_processing.get_order(int(order_id))
+        except (TypeError, ValueError):
+            order = None
+        if order is not None:
+            payload = {
+                **payload,
+                "deliveryType": order.get("deliveryType") or payload.get("deliveryType"),
+                "priceOverride": order.get("deliveryPrice"),
+                "estimatedDaysOverride": order.get("estimatedDeliveryDays"),
+            }
+    result = delivery_mock.create_shipment(payload)
     if isinstance(result, dict) and "error" in result:
         return jsonify(success=False, **result), 400
-    return jsonify(success=True, shipment=result), 201
+    return jsonify(success=True, shipment=_serialize_shipment(result)), 201
 
 @delivery_bp.put("/shipments/<int:sid>/status")
+@require_role("Support", "Manager", "Admin")
 def update_shipment_status(sid: int):
     data = request.get_json(silent=True) or {}
     result = delivery_mock.update_shipment_status(sid, data.get("status", ""))
@@ -217,7 +290,7 @@ def update_shipment_status(sid: int):
         return jsonify(success=False, error="not_found"), 404
     if "error" in result:
         return jsonify(success=False, **result), 400
-    return jsonify(success=True, shipment=result)
+    return jsonify(success=True, shipment=_serialize_shipment(result))
 
 support_bp = Blueprint("support", __name__, url_prefix="/support")
 
