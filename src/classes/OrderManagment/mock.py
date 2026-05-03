@@ -149,6 +149,14 @@ QUALITY_MULTIPLIERS: Dict[str, dict] = {
 ORDER_SETUP_FEE_EUR = 1.50
 FALLBACK_PRODUCT_PRICE_EUR = 10.00
 BASE_ITEM_TIME_MIN = 45
+DEFAULT_DELIVERY_ADDRESS: Dict[str, str] = {
+    "fullName": "Demo Customer",
+    "street": "Main Street 1",
+    "city": "Bratislava",
+    "postalCode": "81101",
+    "country": "Slovakia",
+    "phone": "+421900000000",
+}
 
 def normalize_status(status: Optional[str]) -> str:
     raw = str(status or "").strip()
@@ -186,6 +194,10 @@ def _normalize_order_record(order: Optional[dict]) -> Optional[dict]:
     if order is None:
         return None
     order["status"] = normalize_status(order.get("status"))
+    if not str(order.get("deliveryType") or "").strip():
+        order["deliveryType"] = "Standard"
+    if not isinstance(order.get("deliveryAddress"), dict):
+        order["deliveryAddress"] = dict(DEFAULT_DELIVERY_ADDRESS)
     return order
 
 def _quality_key(value) -> str:
@@ -312,6 +324,13 @@ def create_order(data: dict) -> dict:
         estimate["basePrice"] + delivery["deliveryPrice"] + payment["paymentSurcharge"],
         2,
     )
+    delivery_request = data.get("delivery") if isinstance(data.get("delivery"), dict) else None
+    delivery_address = None
+    if isinstance(delivery_request, dict) and isinstance(delivery_request.get("address"), dict):
+        delivery_address = {
+            key: str(value).strip()
+            for key, value in delivery_request["address"].items()
+        }
     order = {
         "id": oid,
         "customerId": int(data.get("customerId", 1)),
@@ -322,6 +341,7 @@ def create_order(data: dict) -> dict:
         "totalPrice": total,
         "status": "Prijatá",
         "createdAt": datetime.utcnow().isoformat(),
+        "deliveryAddress": delivery_address,
         **delivery,
         **payment,
     }
